@@ -784,7 +784,9 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
             try {
                 handle.flush();
                 handle.close();
-            } catch (_e) {}
+            } catch (_e) {
+                /* flush/close may fail if handle already closed */
+            }
             BROWSER_RUNTIME._files!.delete(path);
         }
         for (const [key, value] of BROWSER_RUNTIME._fileInfoCache?.entries() || []) {
@@ -796,14 +798,10 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
         if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[path]) {
             delete globalThis.DUCKDB_RUNTIME._preparedHandles[path];
         }
-        try {
-            const opfsRoot = navigator.storage.getDirectory();
-            // SyncAccessHandle is sync but getDirectory is async — best-effort cleanup via _pendingDeletes
-            if (!globalThis.DUCKDB_RUNTIME._pendingDeletes) {
-                globalThis.DUCKDB_RUNTIME._pendingDeletes = [];
-            }
-            globalThis.DUCKDB_RUNTIME._pendingDeletes.push(path);
-        } catch (_e) {}
+        if (!globalThis.DUCKDB_RUNTIME._pendingDeletes) {
+            globalThis.DUCKDB_RUNTIME._pendingDeletes = [];
+        }
+        globalThis.DUCKDB_RUNTIME._pendingDeletes.push(path);
     },
     callScalarUDF: (
         mod: DuckDBModule,
