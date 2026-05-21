@@ -161,6 +161,9 @@ RT_FN(void duckdb_web_fs_file_move(const char *from, size_t fromLen, const char 
 RT_FN(bool duckdb_web_fs_file_exists(const char *path, size_t pathLen), {
     return NATIVE_FS->FileExists(std::string{path, pathLen});
 });
+RT_FN(void duckdb_web_fs_file_remove(const char *path, size_t pathLen), {
+    NATIVE_FS->RemoveFile(std::string{path, pathLen});
+});
 #undef RT_FN
 
 extern "C" void duckdb_web_fs_glob_add_path(const char *path) {
@@ -1005,11 +1008,19 @@ bool WebFileSystem::FileExists(const std::string &filename, optional_ptr<FileOpe
     return duckdb_web_fs_file_exists(filename.c_str(), filename.size());
 }
 /// Remove a file from disk
-void WebFileSystem::RemoveFile(const std::string &filename, optional_ptr<FileOpener> opener) {}
+void WebFileSystem::RemoveFile(const std::string &filename, optional_ptr<FileOpener> opener) {
+    std::unique_lock<LightMutex> fs_guard{fs_mutex_};
+    // Clean up C++ registry
+    files_by_name_.erase(filename);
+    files_by_url_.erase(filename);
+    // Notify JS runtime
+    duckdb_web_fs_file_remove(filename.c_str(), filename.size());
+}
 
 /// Sync a file handle to disk
 void WebFileSystem::FileSync(duckdb::FileHandle &handle) {
-    // Noop, runtime writes directly
+    auto &file_hdl = static_cast<WebFileHandle &>(handle);
+    duckdb_web_fs_file_sync(file_hdl.file_->file_id_);
 }
 
 /// Runs a glob on the file system, returning a list of matching files
