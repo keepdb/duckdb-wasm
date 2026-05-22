@@ -282,13 +282,15 @@ export const NODE_RUNTIME: DuckDBRuntime & {
         const to = readString(mod, toPtr, toLen);
         const handle = NODE_RUNTIME._files?.get(from);
         if (handle !== undefined) {
-            NODE_RUNTIME._files!.delete(handle);
+            NODE_RUNTIME._files!.delete(from);
             NODE_RUNTIME._files!.set(to, handle);
         }
+        if (fs.existsSync(from)) {
+            fs.renameSync(from, to);
+        }
         for (const [key, value] of NODE_RUNTIME._fileInfoCache?.entries() || []) {
-            if (value.dataUrl == from) {
+            if (value.dataUrl == from || value.dataUrl == to) {
                 NODE_RUNTIME._fileInfoCache.delete(key);
-                break;
             }
         }
         return true;

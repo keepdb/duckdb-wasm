@@ -588,8 +588,9 @@ rapidjson::Value WebFileSystem::WriteFileInfo(rapidjson::Document &doc, std::str
         value.SetObject();
         value.AddMember("cacheEpoch", rapidjson::Value{LoadCacheEpoch()}, doc.GetAllocator());
         value.AddMember("fileName",
-                        rapidjson::Value{normalized_file_name.data(),
-                                         static_cast<rapidjson::SizeType>(normalized_file_name.size())},
+                        rapidjson::Value{normalized_file_name.c_str(),
+                                         static_cast<rapidjson::SizeType>(normalized_file_name.size()),
+                                         doc.GetAllocator()},
                         doc.GetAllocator());
         value.AddMember("dataProtocol", static_cast<double>(proto), doc.GetAllocator());
         value.AddMember("collectStatistics", file_statistics_->TracksFile(normalized_file_name), doc.GetAllocator());
