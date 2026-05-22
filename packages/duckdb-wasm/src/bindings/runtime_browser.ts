@@ -588,6 +588,9 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                     }
                     const handle: FileSystemSyncAccessHandle | undefined = getRuntimeHandle(file.fileName, true);
                     if (!handle) {
+                        if (flags & FileFlags.FILE_FLAGS_NULL_IF_NOT_EXISTS) {
+                            return 0;
+                        }
                         throw new Error(`No OPFS access handle registered with name: ${file.fileName}`);
                     }
                     if (
