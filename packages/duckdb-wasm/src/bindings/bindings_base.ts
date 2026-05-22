@@ -597,6 +597,10 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
         }
         dropResponseBuffers(this.mod);
         globalThis.DUCKDB_RUNTIME._files = (globalThis.DUCKDB_RUNTIME._files || new Map()).set(name, handle);
+        // DuckDB core may normalize opfs:// to opfs:/ — register both keys
+        if (name.startsWith('opfs://')) {
+            globalThis.DUCKDB_RUNTIME._files.set(name.replace('opfs://', 'opfs:/'), handle);
+        }
         if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[name]) {
             delete globalThis.DUCKDB_RUNTIME._preparedHandles[name];
         }
