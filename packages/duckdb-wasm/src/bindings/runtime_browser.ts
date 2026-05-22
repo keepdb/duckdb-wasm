@@ -791,7 +791,13 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
             } catch (_e) {
                 /* flush/close may fail if handle already closed */
             }
+            // Clean up both opfs:// and opfs:/ variants
             BROWSER_RUNTIME._files!.delete(path);
+            if (path.startsWith('opfs://')) {
+                BROWSER_RUNTIME._files!.delete(path.replace('opfs://', 'opfs:/'));
+            } else if (path.startsWith('opfs:/') && !path.startsWith('opfs://')) {
+                BROWSER_RUNTIME._files!.delete(path.replace('opfs:/', 'opfs://'));
+            }
         }
         for (const [key, value] of BROWSER_RUNTIME._fileInfoCache?.entries() || []) {
             if (value.dataUrl == path) {

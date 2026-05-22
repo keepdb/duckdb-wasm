@@ -596,7 +596,13 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
             throw new Error(readString(this.mod, d, n));
         }
         dropResponseBuffers(this.mod);
-        globalThis.DUCKDB_RUNTIME._files = (globalThis.DUCKDB_RUNTIME._files || new Map()).set(name, handle);
+        const files = globalThis.DUCKDB_RUNTIME._files || new Map();
+        files.set(name, handle);
+        // DuckDB core normalizes opfs:// to opfs:/ — register both variants
+        if (name.startsWith('opfs://')) {
+            files.set(name.replace('opfs://', 'opfs:/'), handle);
+        }
+        globalThis.DUCKDB_RUNTIME._files = files;
         if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[name]) {
             delete globalThis.DUCKDB_RUNTIME._preparedHandles[name];
         }
