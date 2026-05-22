@@ -233,7 +233,7 @@ WebFileSystem::DataProtocol WebFileSystem::inferDataProtocol(std::string_view ur
         proto = WebFileSystem::DataProtocol::HTTP;
     } else if (hasPrefix(url, "s3://")) {
         proto = WebFileSystem::DataProtocol::S3;
-    } else if (hasPrefix(url, "opfs://")) {
+    } else if (hasPrefix(url, "opfs://") || hasPrefix(url, "opfs:/")) {
         proto = WebFileSystem::DataProtocol::BROWSER_FSACCESS;
     } else if (hasPrefix(url, "file://")) {
         data_url = std::string_view{url}.substr(7);
@@ -632,6 +632,11 @@ duckdb::unique_ptr<duckdb::FileHandle> WebFileSystem::OpenFile(const string &url
     // New file?
     std::shared_ptr<WebFile> file = nullptr;
     auto iter = files_by_name_.find(url);
+    // DuckDB core may normalize opfs:// to opfs:/ — try both
+    if (iter == files_by_name_.end() && url.rfind("opfs:/", 0) == 0 && url.rfind("opfs://", 0) != 0) {
+        std::string double_slash = "opfs://" + url.substr(5);
+        iter = files_by_name_.find(double_slash);
+    }
     if (iter == files_by_name_.end()) {
         // Determine url type
         DataProtocol data_proto = inferDataProtocol(url);
