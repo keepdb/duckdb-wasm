@@ -546,7 +546,7 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
         directIO: boolean,
     ): Promise<HandleType> {
         if (protocol === DuckDBDataProtocol.BROWSER_FSACCESS) {
-            if (handle instanceof FileSystemSyncAccessHandle) {
+            if (typeof FileSystemSyncAccessHandle !== 'undefined' && handle instanceof FileSystemSyncAccessHandle) {
                 // already a handle is sync handle.
             } else if (handle instanceof FileSystemFileHandle) {
                 // handle is an async handle, should convert to sync handle
@@ -598,10 +598,6 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
         dropResponseBuffers(this.mod);
         const files = globalThis.DUCKDB_RUNTIME._files || new Map();
         files.set(name, handle);
-        // DuckDB core normalizes opfs:// to opfs:/ — register both variants
-        if (name.startsWith('opfs://')) {
-            files.set(name.replace('opfs://', 'opfs:/'), handle);
-        }
         globalThis.DUCKDB_RUNTIME._files = files;
         if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[name]) {
             delete globalThis.DUCKDB_RUNTIME._preparedHandles[name];
@@ -681,6 +677,10 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
     /** Flush all files */
     public flushFiles(): void {
         this.mod.ccall('duckdb_web_flush_files', null, [], []);
+    }
+    /** Drain pending async file deletions */
+    public async drainPendingDeletes(): Promise<void> {
+        await this._runtime.drainPendingDeletes?.();
     }
     /** Write a file to a path */
     public copyFileToPath(name: string, path: string): void {

@@ -225,6 +225,17 @@ static inline bool hasPrefix(std::string_view text, std::string_view prefix) {
     return text.compare(0, prefix.size(), prefix) == 0;
 }
 
+static inline bool isNormalizedOPFSPath(std::string_view url) {
+    return hasPrefix(url, "opfs:/") && !hasPrefix(url, "opfs://");
+}
+
+static inline std::string NormalizeOPFSPath(std::string_view url) {
+    if (isNormalizedOPFSPath(url)) {
+        return "opfs://" + std::string{url.substr(6)};
+    }
+    return std::string{url};
+}
+
 WebFileSystem::DataProtocol WebFileSystem::inferDataProtocol(std::string_view url) const {
     // Infer the data protocol from the prefix
     std::string_view data_url = url;
@@ -382,12 +393,14 @@ arrow::Result<std::unique_ptr<WebFileSystem::WebFileHandle>> WebFileSystem::Regi
                                                                                             std::string_view file_url,
                                                                                             DataProtocol protocol) {
     DEBUG_TRACE();
+    auto normalized_file_name = NormalizeOPFSPath(file_name);
+    auto normalized_file_url = NormalizeOPFSPath(file_url);
     // Check if the file exists
     std::unique_lock<LightMutex> fs_guard{fs_mutex_};
-    auto iter = files_by_name_.find(std::string{file_name});
+    auto iter = files_by_name_.find(normalized_file_name);
     if (iter != files_by_name_.end()) {
         auto file = iter->second;
-        if (file->data_url_ == file_url) {
+        if (file->data_url_ == normalized_file_url) {
             return std::make_unique<WebFileHandle>(std::move(file));
         }
         return arrow::Status::Invalid("File already registered: ", file_name);
@@ -395,15 +408,15 @@ arrow::Result<std::unique_ptr<WebFileSystem::WebFileHandle>> WebFileSystem::Regi
 
     // Allocate a new web file
     auto file_id = AllocateFileID();
-    auto file = std::make_shared<WebFile>(*this, file_id, file_name, protocol);
-    file->data_url_ = file_url;
+    auto file = std::make_shared<WebFile>(*this, file_id, normalized_file_name, protocol);
+    file->data_url_ = normalized_file_url;
     file->file_size_ = std::nullopt;
     file->last_modification_time_ = std::nullopt;
 
     // Register the file
     files_by_id_.insert({file_id, file});
     files_by_name_.insert({file->file_name_, file});
-    files_by_url_.insert({std::string{file_url}, file});
+    files_by_url_.insert({normalized_file_url, file});
 
     // Build the file handle
     return std::make_unique<WebFileHandle>(file);
@@ -561,23 +574,25 @@ rapidjson::Value WebFileSystem::WriteFileInfo(rapidjson::Document &doc, uint32_t
 rapidjson::Value WebFileSystem::WriteFileInfo(rapidjson::Document &doc, std::string_view file_name,
                                               uint32_t cache_epoch) {
     DEBUG_TRACE();
+    auto normalized_file_name = NormalizeOPFSPath(file_name);
     if (cache_epoch == LoadCacheEpoch()) {
         rapidjson::Value value;
         value.SetNull();
         return value;
     }
     std::unique_lock<LightMutex> fs_guard{fs_mutex_};
-    auto iter = files_by_name_.find(std::string{file_name});
+    auto iter = files_by_name_.find(normalized_file_name);
     if (iter == files_by_name_.end()) {
-        auto proto = inferDataProtocol(file_name);
+        auto proto = inferDataProtocol(normalized_file_name);
         rapidjson::Value value;
         value.SetObject();
         value.AddMember("cacheEpoch", rapidjson::Value{LoadCacheEpoch()}, doc.GetAllocator());
         value.AddMember("fileName",
-                        rapidjson::Value{file_name.data(), static_cast<rapidjson::SizeType>(file_name.size())},
+                        rapidjson::Value{normalized_file_name.data(),
+                                         static_cast<rapidjson::SizeType>(normalized_file_name.size())},
                         doc.GetAllocator());
         value.AddMember("dataProtocol", static_cast<double>(proto), doc.GetAllocator());
-        value.AddMember("collectStatistics", file_statistics_->TracksFile(file_name), doc.GetAllocator());
+        value.AddMember("collectStatistics", file_statistics_->TracksFile(normalized_file_name), doc.GetAllocator());
         return value;
     }
     auto &file = *iter->second;
@@ -628,23 +643,19 @@ duckdb::unique_ptr<duckdb::FileHandle> WebFileSystem::OpenFile(const string &url
                                                                optional_ptr<FileOpener> opener) {
     DEBUG_TRACE();
     std::unique_lock<LightMutex> fs_guard{fs_mutex_};
+    auto normalized_url = NormalizeOPFSPath(url);
 
     // New file?
     std::shared_ptr<WebFile> file = nullptr;
-    auto iter = files_by_name_.find(url);
-    // DuckDB core may normalize opfs:// to opfs:/ — try both
-    if (iter == files_by_name_.end() && url.rfind("opfs:/", 0) == 0 && url.rfind("opfs://", 0) != 0) {
-        std::string double_slash = "opfs://" + url.substr(5);
-        iter = files_by_name_.find(double_slash);
-    }
+    auto iter = files_by_name_.find(normalized_url);
     if (iter == files_by_name_.end()) {
         // Determine url type
-        DataProtocol data_proto = inferDataProtocol(url);
+        DataProtocol data_proto = inferDataProtocol(normalized_url);
 
         // Create file
-        file = std::make_shared<WebFile>(*this, AllocateFileID(), url, data_proto);
+        file = std::make_shared<WebFile>(*this, AllocateFileID(), normalized_url, data_proto);
         auto file_id = file->file_id_;
-        file->data_url_ = url;
+        file->data_url_ = normalized_url;
 
         // Register in directory
         std::string file_name{file->file_name_};
@@ -992,34 +1003,43 @@ bool WebFileSystem::ListFiles(const std::string &directory,
 /// properties
 void WebFileSystem::MoveFile(const std::string &source, const std::string &target, optional_ptr<FileOpener> opener) {
     std::unique_lock<LightMutex> fs_guard{fs_mutex_};
-    if (auto iter = files_by_url_.find(source); iter != files_by_url_.end()) {
+    auto normalized_source = NormalizeOPFSPath(source);
+    auto normalized_target = NormalizeOPFSPath(target);
+    if (auto iter = files_by_url_.find(normalized_source); iter != files_by_url_.end()) {
         auto file = std::move(iter->second);
-        file->data_url_ = target;
+        file->data_url_ = normalized_target;
         files_by_url_.erase(iter);
-        files_by_url_.insert({target, file});
+        files_by_url_.insert({normalized_target, file});
     }
-    if (auto iter = files_by_name_.find(source); iter != files_by_name_.end()) {
+    if (auto iter = files_by_name_.find(normalized_source); iter != files_by_name_.end()) {
         auto file = std::move(iter->second);
-        file->file_name_ = target;
+        file->file_name_ = normalized_target;
         files_by_name_.erase(iter);
-        files_by_name_.insert({target, file});
+        files_by_name_.insert({normalized_target, file});
     }
-    duckdb_web_fs_file_move(source.c_str(), source.size(), target.c_str(), target.size());
+    duckdb_web_fs_file_move(normalized_source.c_str(), normalized_source.size(), normalized_target.c_str(),
+                            normalized_target.size());
 }
 /// Check if a file exists
 bool WebFileSystem::FileExists(const std::string &filename, optional_ptr<FileOpener> opener) {
-    auto iter = files_by_name_.find(filename);
+    auto normalized_filename = NormalizeOPFSPath(filename);
+    auto iter = files_by_name_.find(normalized_filename);
     if (iter != files_by_name_.end()) return true;
-    return duckdb_web_fs_file_exists(filename.c_str(), filename.size());
+    return duckdb_web_fs_file_exists(normalized_filename.c_str(), normalized_filename.size());
 }
 /// Remove a file from disk
 void WebFileSystem::RemoveFile(const std::string &filename, optional_ptr<FileOpener> opener) {
     std::unique_lock<LightMutex> fs_guard{fs_mutex_};
+    auto normalized_filename = NormalizeOPFSPath(filename);
+    auto iter = files_by_name_.find(normalized_filename);
+    if (iter != files_by_name_.end()) {
+        files_by_id_.erase(iter->second->file_id_);
+    }
     // Clean up C++ registry
-    files_by_name_.erase(filename);
-    files_by_url_.erase(filename);
+    files_by_name_.erase(normalized_filename);
+    files_by_url_.erase(normalized_filename);
     // Notify JS runtime
-    duckdb_web_fs_file_remove(filename.c_str(), filename.size());
+    duckdb_web_fs_file_remove(normalized_filename.c_str(), normalized_filename.size());
 }
 
 /// Sync a file handle to disk

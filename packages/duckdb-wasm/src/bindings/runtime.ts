@@ -137,6 +137,7 @@ export function dropResponseBuffers(mod: DuckDBModule): void {
 /** The duckdb runtime */
 export interface DuckDBRuntime {
     _files?: Map<string, any>;
+    _pendingDeletes?: string[];
     _udfFunctions: Map<number, UDFFunction>;
 
     // Test a platform feature
@@ -167,6 +168,7 @@ export interface DuckDBRuntime {
     prepareFileHandle?: (path: string, protocol: DuckDBDataProtocol) => Promise<PreparedDBFileHandle[]>;
     prepareFileHandles?: (path: string[], protocol: DuckDBDataProtocol) => Promise<PreparedDBFileHandle[]>;
     prepareDBFileHandle?: (path: string, protocol: DuckDBDataProtocol) => Promise<PreparedDBFileHandle[]>;
+    drainPendingDeletes?: () => Promise<void>;
 
     // Internal API - experimental
     progressUpdate(final: number, percentage: number, iteration: number): void;

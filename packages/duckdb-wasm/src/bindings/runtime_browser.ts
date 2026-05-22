@@ -19,23 +19,88 @@ import * as udf from './udf_runtime';
 
 const OPFS_PREFIX_LEN = 'opfs://'.length;
 const PATH_SEP_REGEX = /\/|\\/;
+const COPY_BUFFER_SIZE = 1024 * 1024;
+
+const isNormalizedOPFSPath = (path: string): boolean => path.startsWith('opfs:/') && !path.startsWith('opfs://');
+
+const normalizeOPFSPath = (path: string): string => {
+    if (isNormalizedOPFSPath(path)) {
+        return `opfs://${path.slice('opfs:/'.length)}`;
+    }
+    return path;
+};
+
+const getOPFSEntryPath = (path: string): string => normalizeOPFSPath(path).slice(OPFS_PREFIX_LEN);
+
+const getRuntimeHandle = (path: string): any => {
+    const normalized = normalizeOPFSPath(path);
+    return BROWSER_RUNTIME._files?.get(normalized) || BROWSER_RUNTIME._preparedHandles?.[normalized];
+};
+
+const setRuntimeHandle = (path: string, handle: any): void => {
+    const normalized = normalizeOPFSPath(path);
+    BROWSER_RUNTIME._files!.set(normalized, handle);
+    if (normalized !== path) {
+        BROWSER_RUNTIME._files!.delete(path);
+    }
+};
+
+const deleteRuntimeHandle = (path: string): void => {
+    const normalized = normalizeOPFSPath(path);
+    BROWSER_RUNTIME._files!.delete(normalized);
+    BROWSER_RUNTIME._files!.delete(path);
+    if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[normalized]) {
+        delete globalThis.DUCKDB_RUNTIME._preparedHandles[normalized];
+    }
+    if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[path]) {
+        delete globalThis.DUCKDB_RUNTIME._preparedHandles[path];
+    }
+};
+
+const isSyncAccessHandle = (handle: any): handle is FileSystemSyncAccessHandle =>
+    typeof FileSystemSyncAccessHandle !== 'undefined' && handle instanceof FileSystemSyncAccessHandle;
+
+const copySyncAccessHandle = (source: FileSystemSyncAccessHandle, target: FileSystemSyncAccessHandle): void => {
+    source.flush();
+    const size = source.getSize();
+    target.truncate(0);
+
+    let offset = 0;
+    const buffer = new Uint8Array(Math.min(COPY_BUFFER_SIZE, Math.max(size, 1)));
+    while (offset < size) {
+        const chunkSize = Math.min(buffer.byteLength, size - offset);
+        const chunk = buffer.subarray(0, chunkSize);
+        const bytesRead = source.read(chunk, { at: offset });
+        if (bytesRead <= 0) {
+            break;
+        }
+        target.write(chunk.subarray(0, bytesRead), { at: offset });
+        offset += bytesRead;
+    }
+
+    target.truncate(size);
+    target.flush();
+};
 
 export const BROWSER_RUNTIME: DuckDBRuntime & {
     _files: Map<string, any>;
     _fileInfoCache: Map<number, DuckDBFileInfo>;
     _globalFileInfo: DuckDBGlobalFileInfo | null;
     _preparedHandles: Record<string, FileSystemSyncAccessHandle>;
+    _pendingDeletes: string[];
     _opfsRoot: FileSystemDirectoryHandle | null;
 
     getFileInfo(mod: DuckDBModule, fileId: number): DuckDBFileInfo | null;
     getGlobalFileInfo(mod: DuckDBModule): DuckDBGlobalFileInfo | null;
     assignOPFSRoot(): Promise<void>;
+    drainPendingDeletes(): Promise<void>;
 } = {
     _files: new Map<string, any>(),
     _fileInfoCache: new Map<number, DuckDBFileInfo>(),
     _udfFunctions: new Map(),
     _globalFileInfo: null,
     _preparedHandles: {} as any,
+    _pendingDeletes: [],
     _opfsRoot: null,
 
     getFileInfo(mod: DuckDBModule, fileId: number): DuckDBFileInfo | null {
@@ -62,9 +127,10 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                 }
                 const file = { ...info, blob: null } as DuckDBFileInfo;
                 BROWSER_RUNTIME._fileInfoCache.set(fileId, file);
-                if (!BROWSER_RUNTIME._files.has(file.fileName) && BROWSER_RUNTIME._preparedHandles[file.fileName]) {
-                    BROWSER_RUNTIME._files.set(file.fileName, BROWSER_RUNTIME._preparedHandles[file.fileName]);
-                    delete BROWSER_RUNTIME._preparedHandles[file.fileName];
+                const normalizedPath = normalizeOPFSPath(file.fileName);
+                if (!BROWSER_RUNTIME._files.has(normalizedPath) && BROWSER_RUNTIME._preparedHandles[normalizedPath]) {
+                    setRuntimeHandle(normalizedPath, BROWSER_RUNTIME._preparedHandles[normalizedPath]);
+                    delete BROWSER_RUNTIME._preparedHandles[normalizedPath];
                 }
                 return file;
             } catch (error) {
@@ -110,22 +176,52 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
             BROWSER_RUNTIME._opfsRoot = await navigator.storage.getDirectory();
         }
     },
+    async drainPendingDeletes(): Promise<void> {
+        if (BROWSER_RUNTIME._pendingDeletes.length === 0) {
+            return;
+        }
+        await BROWSER_RUNTIME.assignOPFSRoot();
+        const pending = [...new Set(BROWSER_RUNTIME._pendingDeletes)];
+        BROWSER_RUNTIME._pendingDeletes = [];
+
+        for (const path of pending) {
+            const entryPath = getOPFSEntryPath(path);
+            const folders = entryPath.split(PATH_SEP_REGEX).filter(Boolean);
+            const fileName = folders.pop();
+            if (!fileName) {
+                continue;
+            }
+            let dirHandle: FileSystemDirectoryHandle | null = BROWSER_RUNTIME._opfsRoot!;
+            for (const folder of folders) {
+                dirHandle = await dirHandle.getDirectoryHandle(folder).catch(() => null);
+                if (!dirHandle) {
+                    break;
+                }
+            }
+            if (!dirHandle) {
+                continue;
+            }
+            await dirHandle.removeEntry(fileName).catch(() => undefined);
+        }
+    },
     /** Prepare a file handle that could only be acquired aschronously */
     async prepareFileHandles(filePaths: string[], protocol: DuckDBDataProtocol): Promise<PreparedDBFileHandle[]> {
         if (protocol === DuckDBDataProtocol.BROWSER_FSACCESS) {
             await BROWSER_RUNTIME.assignOPFSRoot();
             const prepare = async (path: string): Promise<PreparedDBFileHandle> => {
-                if (BROWSER_RUNTIME._files.has(path)) {
+                const normalizedPath = normalizeOPFSPath(path);
+                const cachedHandle = BROWSER_RUNTIME._files.get(normalizedPath);
+                if (cachedHandle) {
                     return {
-                        path,
-                        handle: BROWSER_RUNTIME._files.get(path),
+                        path: normalizedPath,
+                        handle: cachedHandle,
                         fromCached: true,
                     };
                 }
                 const opfsRoot = BROWSER_RUNTIME._opfsRoot!;
                 let dirHandle: FileSystemDirectoryHandle = opfsRoot;
                 // check if mkdir -p is needed
-                const opfsPath = path.slice(OPFS_PREFIX_LEN);
+                const opfsPath = getOPFSEntryPath(normalizedPath);
                 let fileName = opfsPath;
                 if (PATH_SEP_REGEX.test(opfsPath)) {
                     const folders = opfsPath.split(PATH_SEP_REGEX);
@@ -143,16 +239,16 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                 }
                 const fileHandle = await dirHandle.getFileHandle(fileName, { create: false }).catch(e => {
                     if (e?.name === 'NotFoundError') {
-                        console.debug(`File ${path} does not exists yet, creating...`);
+                        console.debug(`File ${normalizedPath} does not exists yet, creating...`);
                         return dirHandle.getFileHandle(fileName, { create: true });
                     }
                     throw e;
                 });
                 try {
                     const handle = await fileHandle.createSyncAccessHandle();
-                    BROWSER_RUNTIME._preparedHandles[path] = handle;
+                    BROWSER_RUNTIME._preparedHandles[normalizedPath] = handle;
                     return {
-                        path,
+                        path: normalizedPath,
                         handle,
                         fromCached: false,
                     };
@@ -172,7 +268,13 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     /** Prepare a file handle that could only be acquired aschronously */
     async prepareDBFileHandle(dbPath: string, protocol: DuckDBDataProtocol): Promise<PreparedDBFileHandle[]> {
         if (protocol === DuckDBDataProtocol.BROWSER_FSACCESS && this.prepareFileHandles) {
-            const filePaths = [dbPath, `${dbPath}.wal`];
+            const normalizedPath = normalizeOPFSPath(dbPath);
+            const filePaths = [
+                normalizedPath,
+                `${normalizedPath}.wal`,
+                `${normalizedPath}.tmp`,
+                `${normalizedPath}.wal.tmp`,
+            ];
             return this.prepareFileHandles(filePaths, protocol);
         }
         throw new Error(`Unsupported protocol ${protocol} for path ${dbPath} with protocol ${protocol}`);
@@ -417,11 +519,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                     return result;
                 }
                 case DuckDBDataProtocol.BROWSER_FSACCESS: {
-                    let handle: FileSystemSyncAccessHandle | undefined = BROWSER_RUNTIME._files?.get(file.fileName);
-                    // DuckDB core may normalize opfs:// to opfs:/ — try both
-                    if (!handle && file.fileName.startsWith('opfs:/') && !file.fileName.startsWith('opfs://')) {
-                        handle = BROWSER_RUNTIME._files?.get(file.fileName.replace('opfs:/', 'opfs://'));
-                    }
+                    const handle: FileSystemSyncAccessHandle | undefined = getRuntimeHandle(file.fileName);
                     if (!handle) {
                         throw new Error(`No OPFS access handle registered with name: ${file.fileName}`);
                     }
@@ -521,7 +619,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                 xhr.send(null);
                 return xhr.status == 206 || xhr.status == 200;
             } else {
-                return BROWSER_RUNTIME._files.has(path);
+                return !!getRuntimeHandle(path);
             }
         } catch (e: any) {
             console.log(e);
@@ -532,7 +630,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     syncFile: (mod: DuckDBModule, fileId: number) => {
         const file = BROWSER_RUNTIME.getFileInfo(mod, fileId);
         if (file?.dataProtocol === DuckDBDataProtocol.BROWSER_FSACCESS) {
-            const handle: FileSystemSyncAccessHandle = BROWSER_RUNTIME._files?.get(file.fileName);
+            const handle: FileSystemSyncAccessHandle = getRuntimeHandle(file.fileName);
             if (handle) {
                 handle.flush();
             }
@@ -552,7 +650,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                     // XXX Remove from registry
                     return;
                 case DuckDBDataProtocol.BROWSER_FSACCESS: {
-                    const handle: FileSystemSyncAccessHandle = BROWSER_RUNTIME._files?.get(file.fileName);
+                    const handle: FileSystemSyncAccessHandle = getRuntimeHandle(file.fileName);
                     if (handle) {
                         handle.flush();
                     }
@@ -566,10 +664,10 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     },
     dropFile: (mod: DuckDBModule, fileNamePtr: number, fileNameLen: number) => {
         const fileName = readString(mod, fileNamePtr, fileNameLen);
-        const handle: FileSystemSyncAccessHandle = BROWSER_RUNTIME._files?.get(fileName);
+        const handle: FileSystemSyncAccessHandle = getRuntimeHandle(fileName);
         if (handle) {
-            BROWSER_RUNTIME._files.delete(fileName);
-            if (handle instanceof FileSystemSyncAccessHandle) {
+            deleteRuntimeHandle(fileName);
+            if (isSyncAccessHandle(handle)) {
                 try {
                     handle.flush();
                     handle.close();
@@ -597,7 +695,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                 failWith(mod, `truncateFile not implemented`);
                 return;
             case DuckDBDataProtocol.BROWSER_FSACCESS: {
-                const handle = BROWSER_RUNTIME._files?.get(file.fileName);
+                const handle = getRuntimeHandle(file.fileName);
                 if (!handle) {
                     throw new Error(`No OPFS access handle registered with name: ${file.fileName}`);
                 }
@@ -673,7 +771,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                     return data.byteLength;
                 }
                 case DuckDBDataProtocol.BROWSER_FSACCESS: {
-                    const handle: FileSystemSyncAccessHandle = BROWSER_RUNTIME._files.get(file.fileName);
+                    const handle: FileSystemSyncAccessHandle = getRuntimeHandle(file.fileName);
                     if (!handle) {
                         throw new Error(`No OPFS access handle registered with name: ${file.fileName}`);
                     }
@@ -710,7 +808,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                 failWith(mod, 'cannot write using the html5 file reader api');
                 return 0;
             case DuckDBDataProtocol.BROWSER_FSACCESS: {
-                const handle: FileSystemSyncAccessHandle = BROWSER_RUNTIME._files?.get(file.fileName);
+                const handle: FileSystemSyncAccessHandle = getRuntimeHandle(file.fileName);
                 if (!handle) {
                     throw new Error(`No OPFS access handle registered with name: ${file.fileName}`);
                 }
@@ -768,10 +866,19 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     moveFile: (mod: DuckDBModule, fromPtr: number, fromLen: number, toPtr: number, toLen: number) => {
         const from = readString(mod, fromPtr, fromLen);
         const to = readString(mod, toPtr, toLen);
-        const handle = BROWSER_RUNTIME._files?.get(from);
-        if (handle !== undefined) {
-            BROWSER_RUNTIME._files!.delete(from);
-            BROWSER_RUNTIME._files!.set(to, handle);
+        const sourceHandle = getRuntimeHandle(from);
+        const targetHandle = getRuntimeHandle(to);
+        if (isSyncAccessHandle(sourceHandle) && isSyncAccessHandle(targetHandle)) {
+            if (sourceHandle !== targetHandle) {
+                copySyncAccessHandle(sourceHandle, targetHandle);
+            } else {
+                sourceHandle.flush();
+            }
+            deleteRuntimeHandle(from);
+            setRuntimeHandle(to, targetHandle);
+        } else if (sourceHandle !== undefined) {
+            deleteRuntimeHandle(from);
+            setRuntimeHandle(to, sourceHandle);
         }
         for (const [key, value] of BROWSER_RUNTIME._fileInfoCache?.entries() || []) {
             if (value.dataUrl == from) {
@@ -783,21 +890,15 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     },
     removeFile: (mod: DuckDBModule, pathPtr: number, pathLen: number) => {
         const path = readString(mod, pathPtr, pathLen);
-        const handle = BROWSER_RUNTIME._files?.get(path);
-        if (handle && typeof FileSystemSyncAccessHandle !== 'undefined' && handle instanceof FileSystemSyncAccessHandle) {
+        const handle = getRuntimeHandle(path);
+        if (isSyncAccessHandle(handle)) {
             try {
                 handle.flush();
                 handle.close();
             } catch (_e) {
                 /* flush/close may fail if handle already closed */
             }
-            // Clean up both opfs:// and opfs:/ variants
-            BROWSER_RUNTIME._files!.delete(path);
-            if (path.startsWith('opfs://')) {
-                BROWSER_RUNTIME._files!.delete(path.replace('opfs://', 'opfs:/'));
-            } else if (path.startsWith('opfs:/') && !path.startsWith('opfs://')) {
-                BROWSER_RUNTIME._files!.delete(path.replace('opfs:/', 'opfs://'));
-            }
+            deleteRuntimeHandle(path);
         }
         for (const [key, value] of BROWSER_RUNTIME._fileInfoCache?.entries() || []) {
             if (value.dataUrl == path) {
@@ -805,14 +906,11 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                 break;
             }
         }
-        if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[path]) {
-            delete globalThis.DUCKDB_RUNTIME._preparedHandles[path];
-        }
         if (path.startsWith('opfs:/')) {
             if (!globalThis.DUCKDB_RUNTIME._pendingDeletes) {
                 globalThis.DUCKDB_RUNTIME._pendingDeletes = [];
             }
-            globalThis.DUCKDB_RUNTIME._pendingDeletes.push(path);
+            globalThis.DUCKDB_RUNTIME._pendingDeletes.push(normalizeOPFSPath(path));
         }
     },
     callScalarUDF: (

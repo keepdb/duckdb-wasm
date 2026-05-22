@@ -89,12 +89,14 @@ export function testOPFS(baseDir: string, bundle: () => DuckDBBundle): void {
 
         it('Load Existing DB File', async () => {
             //1. data preparation
-            await conn.send(`CREATE TABLE tmp AS SELECT * FROM "${ baseDir }/tpch/0_01/parquet/lineitem.parquet"`);
-            await conn.send(`CHECKPOINT;`);
+            await conn.query(`CREATE TABLE keepdb_marker AS SELECT 1::INTEGER AS id, 'ok'::VARCHAR AS value`);
+            await conn.query(`FORCE CHECKPOINT;`);
 
             await conn.close();
-            await db.reset();
-            await db.dropFiles();
+            await db.flushFiles();
+            const fileSizeAfterFlush = await getOPFSFileSize('test.db');
+            expect(fileSizeAfterFlush).toBeGreaterThan(0);
+
             await db.terminate();
 
             const worker = new Worker(bundle().mainWorker!);
@@ -105,16 +107,18 @@ export function testOPFS(baseDir: string, bundle: () => DuckDBBundle): void {
                 accessMode: DuckDBAccessMode.READ_WRITE
             });
             conn = await db.connect();
-            
-            return; //FIXME
 
-            const result = await conn.send(`SELECT count(*) ::INTEGER as cnt FROM tmp;`);
+            const fileSizeAfterReopen = await getOPFSFileSize('test.db');
+            expect(fileSizeAfterReopen).toBeGreaterThan(0);
+
+            const result = await conn.send(`SELECT id, value FROM keepdb_marker;`);
             const batches = [];
             for await (const batch of result) {
                 batches.push(batch);
             }
-            const table = await new arrow.Table<{ cnt: arrow.Int }>(batches);
-            expect(table.getChildAt(0)?.get(0)).toBeGreaterThan(60_000);
+            const table = await new arrow.Table<{ id: arrow.Int, value: arrow.Utf8 }>(batches);
+            expect(table.getChildAt(0)?.get(0)).toEqual(1);
+            expect(table.getChildAt(1)?.get(0)).toEqual('ok');
         });
 
         it('Load Parquet file that are already with empty handler', async () => {
@@ -414,6 +418,13 @@ export function testOPFS(baseDir: string, bundle: () => DuckDBBundle): void {
             //
         }
         await opfsRoot.removeEntry('datadir').catch(_ignore);
+    }
+
+    async function getOPFSFileSize(name: string): Promise<number> {
+        const opfsRoot = await navigator.storage.getDirectory();
+        const fileHandle = await opfsRoot.getFileHandle(name);
+        const file = await fileHandle.getFile();
+        return file.size;
     }
 
     async function getOpfsFileHandlerFromUrl(params: {

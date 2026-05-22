@@ -146,14 +146,17 @@ export abstract class AsyncDuckDBDispatcher implements Logger {
                 }
                 case WorkerRequestType.DROP_FILE:
                     this._bindings.dropFile(request.data);
+                    await this._bindings.drainPendingDeletes();
                     this.sendOK(request);
                     break;
                 case WorkerRequestType.DROP_FILES:
                     this._bindings.dropFiles(request.data);
+                    await this._bindings.drainPendingDeletes();
                     this.sendOK(request);
                     break;
                 case WorkerRequestType.FLUSH_FILES:
                     this._bindings.flushFiles();
+                    await this._bindings.drainPendingDeletes();
                     this.sendOK(request);
                     break;
                 case WorkerRequestType.CONNECT: {
