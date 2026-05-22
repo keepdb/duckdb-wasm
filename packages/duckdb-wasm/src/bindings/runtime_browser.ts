@@ -30,16 +30,22 @@ const normalizeOPFSPath = (path: string): string => {
     return path;
 };
 
+const isOPFSPath = (path: string): boolean => normalizeOPFSPath(path).startsWith('opfs://');
+
 const getOPFSEntryPath = (path: string): string => normalizeOPFSPath(path).slice(OPFS_PREFIX_LEN);
 
-const getRuntimeHandle = (path: string): any => {
+const getRuntimeHandle = (path: string, includeDeleted = false): any => {
     const normalized = normalizeOPFSPath(path);
+    if (!includeDeleted && BROWSER_RUNTIME._deletedOPFSFiles?.has(normalized)) {
+        return undefined;
+    }
     return BROWSER_RUNTIME._files?.get(normalized) || BROWSER_RUNTIME._preparedHandles?.[normalized];
 };
 
 const setRuntimeHandle = (path: string, handle: any): void => {
     const normalized = normalizeOPFSPath(path);
     BROWSER_RUNTIME._files!.set(normalized, handle);
+    BROWSER_RUNTIME._deletedOPFSFiles?.delete(normalized);
     if (normalized !== path) {
         BROWSER_RUNTIME._files!.delete(path);
     }
@@ -55,7 +61,24 @@ const deleteRuntimeHandle = (path: string): void => {
     if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[path]) {
         delete globalThis.DUCKDB_RUNTIME._preparedHandles[path];
     }
+    BROWSER_RUNTIME._deletedOPFSFiles?.delete(normalized);
 };
+
+const markRuntimeHandleDeleted = (path: string): void => {
+    const normalized = normalizeOPFSPath(path);
+    if (isOPFSPath(normalized)) {
+        BROWSER_RUNTIME._deletedOPFSFiles.add(normalized);
+    } else {
+        deleteRuntimeHandle(normalized);
+    }
+};
+
+const clearRuntimeHandleDeleted = (path: string): void => {
+    BROWSER_RUNTIME._deletedOPFSFiles.delete(normalizeOPFSPath(path));
+};
+
+const isRuntimeHandleDeleted = (path: string): boolean =>
+    BROWSER_RUNTIME._deletedOPFSFiles.has(normalizeOPFSPath(path));
 
 const isSyncAccessHandle = (handle: any): handle is FileSystemSyncAccessHandle =>
     typeof FileSystemSyncAccessHandle !== 'undefined' && handle instanceof FileSystemSyncAccessHandle;
@@ -88,6 +111,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     _globalFileInfo: DuckDBGlobalFileInfo | null;
     _preparedHandles: Record<string, FileSystemSyncAccessHandle>;
     _pendingDeletes: string[];
+    _deletedOPFSFiles: Set<string>;
     _opfsRoot: FileSystemDirectoryHandle | null;
 
     getFileInfo(mod: DuckDBModule, fileId: number): DuckDBFileInfo | null;
@@ -101,6 +125,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     _globalFileInfo: null,
     _preparedHandles: {} as any,
     _pendingDeletes: [],
+    _deletedOPFSFiles: new Set<string>(),
     _opfsRoot: null,
 
     getFileInfo(mod: DuckDBModule, fileId: number): DuckDBFileInfo | null {
@@ -212,6 +237,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                 const normalizedPath = normalizeOPFSPath(path);
                 const cachedHandle = BROWSER_RUNTIME._files.get(normalizedPath);
                 if (cachedHandle) {
+                    clearRuntimeHandleDeleted(normalizedPath);
                     return {
                         path: normalizedPath,
                         handle: cachedHandle,
@@ -247,6 +273,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                 try {
                     const handle = await fileHandle.createSyncAccessHandle();
                     BROWSER_RUNTIME._preparedHandles[normalizedPath] = handle;
+                    clearRuntimeHandleDeleted(normalizedPath);
                     return {
                         path: normalizedPath,
                         handle,
@@ -365,13 +392,22 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
 
                             // Supports range requests
                             contentLength = null;
-                            try { contentLength = xhr.getResponseHeader('Content-Length'); } catch (e: any) {console.warn(`Failed to get Content-Length on request`);}
+                            try {
+                                contentLength = xhr.getResponseHeader('Content-Length');
+                            } catch (e: any) {
+                                console.warn(`Failed to get Content-Length on request`);
+                            }
                             if (contentLength !== null && xhr.status == 206) {
                                 const result = mod._malloc(3 * 8);
                                 mod.HEAPF64[(result >> 3) + 0] = +contentLength;
                                 mod.HEAPF64[(result >> 3) + 1] = 0;
                                 let modification_time = 0;
-                                try { modification_time = new Date(xhr.getResponseHeader('Last-Modified')??"").getTime() / 1000; } catch (e: any) {console.warn(`Failed to get Last-Modified on request`);}
+                                try {
+                                    modification_time =
+                                        new Date(xhr.getResponseHeader('Last-Modified') ?? '').getTime() / 1000;
+                                } catch (e: any) {
+                                    console.warn(`Failed to get Last-Modified on request`);
+                                }
                                 mod.HEAPF64[(result >> 3) + 2] = +modification_time;
                                 return result;
                             }
@@ -399,7 +435,11 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                             xhr.setRequestHeader('Range', `bytes=0-0`);
                             xhr.send(null);
                             let actualContentLength = null;
-                            try { actualContentLength = xhr.getResponseHeader('Content-Length'); } catch (e: any) {console.warn(`Failed to get Content-Length on request`);}
+                            try {
+                                actualContentLength = xhr.getResponseHeader('Content-Length');
+                            } catch (e: any) {
+                                console.warn(`Failed to get Content-Length on request`);
+                            }
                             const contentRange = actualContentLength?.split('/')[1];
                             const contentLength2 = actualContentLength;
 
@@ -421,7 +461,11 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
 
                                 // Supports range requests
                                 contentLength = null;
-                                try { contentLength = head.getResponseHeader('Content-Length'); } catch (e: any) {console.warn(`Failed to get Content-Length on request`);}
+                                try {
+                                    contentLength = head.getResponseHeader('Content-Length');
+                                } catch (e: any) {
+                                    console.warn(`Failed to get Content-Length on request`);
+                                }
                                 if (contentLength !== null && +contentLength > 1) {
                                     presumedLength = contentLength;
                                 }
@@ -437,7 +481,12 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                                 mod.HEAPF64[(result >> 3) + 0] = +presumedLength;
                                 mod.HEAPF64[(result >> 3) + 1] = 0;
                                 let modification_time = 0;
-                                try { modification_time = new Date(xhr.getResponseHeader('Last-Modified')??"").getTime() / 1000; } catch (e: any) {console.warn(`Failed to get Last-Modified on request`);}
+                                try {
+                                    modification_time =
+                                        new Date(xhr.getResponseHeader('Last-Modified') ?? '').getTime() / 1000;
+                                } catch (e: any) {
+                                    console.warn(`Failed to get Last-Modified on request`);
+                                }
                                 mod.HEAPF64[(result >> 3) + 2] = +modification_time;
                                 return result;
                             }
@@ -455,7 +504,12 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                                 mod.HEAPF64[(result >> 3) + 0] = xhr.response.byteLength;
                                 mod.HEAPF64[(result >> 3) + 1] = data;
                                 let modification_time = 0;
-                                try { modification_time = new Date(xhr.getResponseHeader('Last-Modified')??"").getTime() / 1000; } catch (e: any) {console.warn(`Failed to get Last-Modified on request`);}
+                                try {
+                                    modification_time =
+                                        new Date(xhr.getResponseHeader('Last-Modified') ?? '').getTime() / 1000;
+                                } catch (e: any) {
+                                    console.warn(`Failed to get Last-Modified on request`);
+                                }
                                 mod.HEAPF64[(result >> 3) + 2] = +modification_time;
                                 return result;
                             }
@@ -481,7 +535,12 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                             mod.HEAPF64[(result >> 3) + 0] = xhr.response.byteLength;
                             mod.HEAPF64[(result >> 3) + 1] = data;
                             let modification_time = 0;
-                            try { modification_time = new Date(xhr.getResponseHeader('Last-Modified')??"").getTime() / 1000; } catch (e: any) {console.warn(`Failed to get Last-Modified on request`);}
+                            try {
+                                modification_time =
+                                    new Date(xhr.getResponseHeader('Last-Modified') ?? '').getTime() / 1000;
+                            } catch (e: any) {
+                                console.warn(`Failed to get Last-Modified on request`);
+                            }
                             mod.HEAPF64[(result >> 3) + 2] = +modification_time;
                             return result;
                         }
@@ -506,7 +565,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
 
                     // Depending on file flags, return nullptr
                     if (flags & FileFlags.FILE_FLAGS_NULL_IF_NOT_EXISTS) {
-                       return 0;
+                        return 0;
                     }
 
                     // Fall back to empty buffered file in the browser
@@ -519,12 +578,26 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                     return result;
                 }
                 case DuckDBDataProtocol.BROWSER_FSACCESS: {
-                    const handle: FileSystemSyncAccessHandle | undefined = getRuntimeHandle(file.fileName);
+                    const wasDeleted = isRuntimeHandleDeleted(file.fileName);
+                    if (
+                        wasDeleted &&
+                        flags & FileFlags.FILE_FLAGS_NULL_IF_NOT_EXISTS &&
+                        !(flags & FileFlags.FILE_FLAGS_FILE_CREATE || flags & FileFlags.FILE_FLAGS_FILE_CREATE_NEW)
+                    ) {
+                        return 0;
+                    }
+                    const handle: FileSystemSyncAccessHandle | undefined = getRuntimeHandle(file.fileName, true);
                     if (!handle) {
                         throw new Error(`No OPFS access handle registered with name: ${file.fileName}`);
                     }
-                    if (flags & FileFlags.FILE_FLAGS_FILE_CREATE_NEW) {
+                    if (
+                        flags & FileFlags.FILE_FLAGS_FILE_CREATE_NEW ||
+                        (wasDeleted && flags & FileFlags.FILE_FLAGS_FILE_CREATE)
+                    ) {
                         handle.truncate(0);
+                    }
+                    if (wasDeleted) {
+                        clearRuntimeHandleDeleted(file.fileName);
                     }
                     const result = mod._malloc(3 * 8);
                     const fileSize = handle.getSize();
@@ -580,7 +653,11 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                         return 0;
                     }
                     let contentLength = null;
-                    try { contentLength = xhr2.getResponseHeader('Content-Length'); } catch (e: any) {console.warn(`Failed to get Content-Length on request`);}
+                    try {
+                        contentLength = xhr2.getResponseHeader('Content-Length');
+                    } catch (e: any) {
+                        console.warn(`Failed to get Content-Length on request`);
+                    }
                     if (contentLength && +contentLength > 1) {
                         console.warn(
                             `Range request for ${path} did not return a partial response: ${xhr2.status} "${xhr2.statusText}"`,
@@ -866,18 +943,20 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     moveFile: (mod: DuckDBModule, fromPtr: number, fromLen: number, toPtr: number, toLen: number) => {
         const from = readString(mod, fromPtr, fromLen);
         const to = readString(mod, toPtr, toLen);
-        const sourceHandle = getRuntimeHandle(from);
-        const targetHandle = getRuntimeHandle(to);
+        const sourceHandle = getRuntimeHandle(from, true);
+        const targetHandle = getRuntimeHandle(to, true);
         if (isSyncAccessHandle(sourceHandle) && isSyncAccessHandle(targetHandle)) {
             if (sourceHandle !== targetHandle) {
                 copySyncAccessHandle(sourceHandle, targetHandle);
+                sourceHandle.truncate(0);
+                sourceHandle.flush();
             } else {
                 sourceHandle.flush();
             }
-            deleteRuntimeHandle(from);
+            markRuntimeHandleDeleted(from);
             setRuntimeHandle(to, targetHandle);
         } else if (sourceHandle !== undefined) {
-            deleteRuntimeHandle(from);
+            markRuntimeHandleDeleted(from);
             setRuntimeHandle(to, sourceHandle);
         }
         for (const [key, value] of BROWSER_RUNTIME._fileInfoCache?.entries() || []) {
@@ -890,15 +969,21 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     },
     removeFile: (mod: DuckDBModule, pathPtr: number, pathLen: number) => {
         const path = readString(mod, pathPtr, pathLen);
-        const handle = getRuntimeHandle(path);
+        const handle = getRuntimeHandle(path, true);
         if (isSyncAccessHandle(handle)) {
             try {
                 handle.flush();
-                handle.close();
+                if (isOPFSPath(path)) {
+                    handle.truncate(0);
+                    handle.flush();
+                    markRuntimeHandleDeleted(path);
+                } else {
+                    handle.close();
+                    deleteRuntimeHandle(path);
+                }
             } catch (_e) {
                 /* flush/close may fail if handle already closed */
             }
-            deleteRuntimeHandle(path);
         }
         for (const [key, value] of BROWSER_RUNTIME._fileInfoCache?.entries() || []) {
             if (value.dataUrl == path) {

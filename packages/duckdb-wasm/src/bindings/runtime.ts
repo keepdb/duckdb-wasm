@@ -62,7 +62,7 @@ export enum FileFlags {
     FILE_FLAGS_NULL_IF_NOT_EXISTS = 1 << 7,
     FILE_FLAGS_PARALLEL_ACCESS = 1 << 8,
     FILE_FLAGS_EXCLUSIVE_CREATE = 1 << 9,
-    FILE_FLAGS_NULL_IF_EXISTS = 1 << 10
+    FILE_FLAGS_NULL_IF_EXISTS = 1 << 10,
 }
 
 /** Configuration for the AWS S3 Filesystem */
@@ -138,6 +138,7 @@ export function dropResponseBuffers(mod: DuckDBModule): void {
 export interface DuckDBRuntime {
     _files?: Map<string, any>;
     _pendingDeletes?: string[];
+    _deletedOPFSFiles?: Set<string>;
     _udfFunctions: Map<number, UDFFunction>;
 
     // Test a platform feature

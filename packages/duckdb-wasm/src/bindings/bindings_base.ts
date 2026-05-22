@@ -599,6 +599,7 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
         const files = globalThis.DUCKDB_RUNTIME._files || new Map();
         files.set(name, handle);
         globalThis.DUCKDB_RUNTIME._files = files;
+        globalThis.DUCKDB_RUNTIME._deletedOPFSFiles?.delete(name);
         if (globalThis.DUCKDB_RUNTIME._preparedHandles?.[name]) {
             delete globalThis.DUCKDB_RUNTIME._preparedHandles[name];
         }
@@ -627,11 +628,11 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
         dropResponseBuffers(this.mod);
     }
     /** Drop files */
-    public dropFiles(names?:string[]): void {
-        const pointers:number[] = [];
-        let pointerOfArray:number = -1;
+    public dropFiles(names?: string[]): void {
+        const pointers: number[] = [];
+        let pointerOfArray: number = -1;
         try {
-            for (const str of (names ?? [])) {
+            for (const str of names ?? []) {
                 if (str !== null && str !== undefined && str.length > 0) {
                     const size = this.mod.lengthBytesUTF8(str) + 1;
                     const ret = this.mod._malloc(size);
@@ -652,14 +653,8 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
             const [s, d, n] = callSRet(
                 this.mod,
                 'duckdb_web_fs_drop_files',
-                [
-                    'number',
-                    'number'
-                ],
-                [
-                    pointerOfArray,
-                    pointers.length
-                ]
+                ['number', 'number'],
+                [pointerOfArray, pointers.length],
             );
             if (s !== StatusCode.SUCCESS) {
                 throw new Error(readString(this.mod, d, n));
@@ -669,7 +664,7 @@ export abstract class DuckDBBindingsBase implements DuckDBBindings {
             for (const pointer of pointers) {
                 this.mod._free(pointer);
             }
-            if( pointerOfArray > 0 ){
+            if (pointerOfArray > 0) {
                 this.mod._free(pointerOfArray);
             }
         }
