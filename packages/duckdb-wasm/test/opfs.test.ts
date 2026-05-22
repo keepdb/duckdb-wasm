@@ -379,7 +379,8 @@ export function testOPFS(baseDir: string, bundle: () => DuckDBBundle): void {
                 ).toBeRejectedWithError("IO Error: No files found that match the pattern \"opfs://datadir/test.parquet\"");
             } finally {
                 await db.reset();
-                await db.dropFiles();
+                await db.dropFiles().catch(() => {
+                });
             }
         });
 
