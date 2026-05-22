@@ -647,6 +647,7 @@ duckdb::unique_ptr<duckdb::FileHandle> WebFileSystem::OpenFile(const string &url
 
     // New file?
     std::shared_ptr<WebFile> file = nullptr;
+    bool created_file = false;
     auto iter = files_by_name_.find(normalized_url);
     if (iter == files_by_name_.end()) {
         // Determine url type
@@ -662,6 +663,7 @@ duckdb::unique_ptr<duckdb::FileHandle> WebFileSystem::OpenFile(const string &url
         files_by_id_.insert({file_id, file});
         files_by_name_.insert({file_name, file});
         files_by_url_.insert({file->data_url_.value(), file});
+        created_file = true;
     } else {
         file = iter->second;
     }
@@ -692,6 +694,16 @@ duckdb::unique_ptr<duckdb::FileHandle> WebFileSystem::OpenFile(const string &url
                 auto *opened = duckdb_web_fs_file_open(file->file_id_, flags.GetFlagsInternal());
                 if (opened == nullptr) {
                     if (flags.ReturnNullIfNotExists()) {
+                        if (created_file) {
+                            fs_guard.lock();
+                            files_by_name_.erase(file->file_name_);
+                            if (file->data_url_.has_value()) {
+                                files_by_url_.erase(file->data_url_.value());
+                            }
+                            files_by_id_.erase(file->file_id_);
+                            file_guard.unlock();
+                            fs_guard.unlock();
+                        }
                         return nullptr;
                     }
                     std::string msg = std::string{"Failed to open file: "} + file->file_name_;
