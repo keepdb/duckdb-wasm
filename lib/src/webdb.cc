@@ -956,6 +956,13 @@ arrow::Status WebDB::Reset() {
 arrow::Status WebDB::Open(std::string_view args_json) {
     DEBUG_TRACE();
     assert(config_ != nullptr);
+    auto previous_path = config_->path;
+    if (!previous_path.empty() && previous_path != ":memory:") {
+        pinned_web_files_.erase(previous_path);
+        pinned_web_files_.erase(previous_path + ".wal");
+        pinned_web_files_.erase(previous_path + ".tmp");
+        pinned_web_files_.erase(previous_path + ".wal.tmp");
+    }
     *config_ = WebDBConfig::ReadFrom(args_json);
     bool in_memory = config_->path == ":memory:" || config_->path == "";
     AccessMode access_mode = in_memory ? AccessMode::AUTOMATIC : AccessMode::READ_ONLY;
@@ -1072,7 +1079,12 @@ arrow::Status WebDB::DropFiles() {
     file_page_buffer_->DropDanglingFiles();
     std::vector<std::string> files_to_drop;
     for (const auto& [key, handle] : pinned_web_files_) {
-        files_to_drop.push_back(handle->GetName());
+        auto name = handle->GetName();
+        if (name == config_->path || name == config_->path + ".wal" || name == config_->path + ".tmp" ||
+            name == config_->path + ".wal.tmp") {
+            continue;
+        }
+        files_to_drop.push_back(name);
     }
     for (const auto& fileName : files_to_drop) {
         arrow::Status status = DropFile(fileName);
