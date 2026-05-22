@@ -784,7 +784,7 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
     removeFile: (mod: DuckDBModule, pathPtr: number, pathLen: number) => {
         const path = readString(mod, pathPtr, pathLen);
         const handle = BROWSER_RUNTIME._files?.get(path);
-        if (handle && handle instanceof FileSystemSyncAccessHandle) {
+        if (handle && typeof FileSystemSyncAccessHandle !== 'undefined' && handle instanceof FileSystemSyncAccessHandle) {
             try {
                 handle.flush();
                 handle.close();
