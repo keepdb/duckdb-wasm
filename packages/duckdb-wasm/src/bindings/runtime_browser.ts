@@ -417,7 +417,11 @@ export const BROWSER_RUNTIME: DuckDBRuntime & {
                     return result;
                 }
                 case DuckDBDataProtocol.BROWSER_FSACCESS: {
-                    const handle: FileSystemSyncAccessHandle = BROWSER_RUNTIME._files?.get(file.fileName);
+                    let handle: FileSystemSyncAccessHandle | undefined = BROWSER_RUNTIME._files?.get(file.fileName);
+                    // DuckDB core may normalize opfs:// to opfs:/ — try both
+                    if (!handle && file.fileName.startsWith('opfs:/') && !file.fileName.startsWith('opfs://')) {
+                        handle = BROWSER_RUNTIME._files?.get(file.fileName.replace('opfs:/', 'opfs://'));
+                    }
                     if (!handle) {
                         throw new Error(`No OPFS access handle registered with name: ${file.fileName}`);
                     }
