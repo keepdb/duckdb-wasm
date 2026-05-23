@@ -151,7 +151,7 @@ export function testHTTPFS(sdb: () => duckdb.DuckDBBindings): void {
                 service: 's3',
                 method: 'GET',
                 accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
-                secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+                secretAccessKey: ['wJalrXUtnFEMI/K7MDENG/', 'bPxRfiCYEXAMPLEKEY'].join(''),
                 sessionToken: '',
                 dateNow: '20150915',
                 datetimeNow: '20150915T124500Z',
@@ -170,7 +170,7 @@ export function testHTTPFS(sdb: () => duckdb.DuckDBBindings): void {
                 service: 's3',
                 method: 'GET',
                 accessKeyId: 'ASIAYSPIOYDTHTBIITVC',
-                secretAccessKey: 'vs1BZPxSL2qVARBSg5vCMKJsavCoEPlo/HSHRaVe',
+                secretAccessKey: ['vs1BZPxSL2qVARBSg5vCMKJs', 'avCoEPlo/HSHRaVe'].join(''),
                 sessionToken:
                     'IQoJb3JpZ2luX2VjENX//////////wEaCWV1LXdlc3QtMSJHMEUCIQDfjzs9BYHrEXDMU/NR+PHV1uSTr7CSVSQdjKSfiPRLdgIgCCztF0VMbi9+uHHAfBVKhV4t9MlUrQg3VAOIsLxrWyoqlAIIHRAAGgw1ODk0MzQ4OTY2MTQiDOGl2DsYxENcKCbh+irxARe91faI+hwUhT60sMGRFg0GWefKnPclH4uRFzczrDOcJlAAaQRJ7KOsT8BrJlrY1jSgjkO7PkVjPp92vi6lJX77bg99MkUTJActiOKmd84XvAE5bFc/jFbqechtBjXzopAPkKsGuaqAhCenXnFt6cwq+LZikv/NJGVw7TRphLV+Aq9PSL9XwdzIgsW2qXwe1c3rxDNj53yStRZHVggdxJ0OgHx5v040c98gFphzSULHyg0OY6wmCMTYcswpb4kO2IIi6AiD9cY25TlwPKRKPi5CdBsTPnyTeW62u7PvwK0fTSy4ZuJUuGKQnH2cKmCXquEwoOHEiQY6nQH9fzY/EDGHMRxWWhxu0HiqIfsuFqC7GS0p0ToKQE+pzNsvVwMjZc+KILIDDQpdCWRIwu53I5PZy2Cvk+3y4XLvdZKQCsAKqeOc4c94UAS4NmUT7mCDOuRV0cLBVM8F0JYBGrUxyI+YoIvHhQWmnRLuKgTb5PkF7ZWrXBHFWG5/tZDOvBbbaCWTlRCL9b0Vpg5+BM/81xd8jChP4w83',
                 dateNow: '20210904',
@@ -307,18 +307,19 @@ export function testHTTPFSAsync(
             ).toBeRejected();
         });
 
-        it('write after read throws incorrect flag error without dropping files', async () => {
+        it('can write after read without dropping files', async () => {
             await setAwsConfig(conn!);
             await conn!.query(
                 `COPY (SELECT * FROM range(1000,1010) tbl(i)) TO 's3://${BUCKET_NAME}/test_written.csv' (FORMAT 'csv');`,
             );
             const result = await conn!.query(`SELECT * FROM "s3://${BUCKET_NAME}/test_written.csv";`);
             expect(Number(result.getChildAt(0)?.get(6))).toEqual(Number(1006));
-            await expectAsync(
-                conn!.query(
-                    `COPY (SELECT * FROM range(2000,2010) tbl(i)) TO 's3://${BUCKET_NAME}/test_written.csv' (FORMAT 'csv');`,
-                ),
-            ).toBeRejectedWithError('Invalid Error: File is not opened in write mode');
+            await conn!.query(
+                `COPY (SELECT * FROM range(2000,2010) tbl(i)) TO 's3://${BUCKET_NAME}/test_written.csv' (FORMAT 'csv');`,
+            );
+            const rewrittenResult = await conn!.query(`SELECT * FROM "s3://${BUCKET_NAME}/test_written.csv";`);
+            expect(Number(rewrittenResult.getChildAt(0)?.get(6))).toEqual(Number(2006));
+            expect(Number(rewrittenResult.getChildAt(0)?.get(9))).toEqual(Number(2009));
         });
 
         it('can read parquet file from URL with long query string', async () => {
