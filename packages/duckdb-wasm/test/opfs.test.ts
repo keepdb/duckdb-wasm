@@ -119,6 +119,34 @@ export function testOPFS(baseDir: string, bundle: () => DuckDBBundle): void {
             const table = await new arrow.Table<{ id: arrow.Int, value: arrow.Utf8 }>(batches);
             expect(table.getChildAt(0)?.get(0)).toEqual(1);
             expect(table.getChildAt(1)?.get(0)).toEqual('ok');
+
+            await conn.query(`INSERT INTO keepdb_marker VALUES (2, 'after-reopen')`);
+            await conn.query(`FORCE CHECKPOINT;`);
+            await conn.close();
+            await db.flushFiles();
+            const fileSizeAfterRewrite = await getOPFSFileSize('test.db');
+            expect(fileSizeAfterRewrite).toBeGreaterThan(0);
+
+            await db.terminate();
+
+            const readerWorker = new Worker(bundle().mainWorker!);
+            db = new AsyncDuckDB(logger, readerWorker);
+            await db.instantiate(bundle().mainModule, bundle().pthreadWorker);
+            await db.open({
+                path: 'opfs://test.db',
+                accessMode: DuckDBAccessMode.READ_WRITE
+            });
+            conn = await db.connect();
+
+            const rewriteResult = await conn.send(`SELECT id, value FROM keepdb_marker ORDER BY id;`);
+            const rewriteBatches = [];
+            for await (const batch of rewriteResult) {
+                rewriteBatches.push(batch);
+            }
+            const rewriteTable = await new arrow.Table<{ id: arrow.Int, value: arrow.Utf8 }>(rewriteBatches);
+            expect(rewriteTable.numRows).toEqual(2);
+            expect(rewriteTable.getChildAt(0)?.get(1)).toEqual(2);
+            expect(rewriteTable.getChildAt(1)?.get(1)).toEqual('after-reopen');
         });
 
         it('Load Parquet file that are already with empty handler', async () => {
