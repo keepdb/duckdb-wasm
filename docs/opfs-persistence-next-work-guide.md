@@ -1,6 +1,6 @@
 # DuckDB-Wasm OPFS 持久化下一步工作指导
 
-更新时间：2026-05-24 12:45 CST
+更新时间：2026-05-24 13:30 CST
 
 ## 最新进展
 
@@ -95,19 +95,29 @@ packages/duckdb-wasm/src/targets/duckdb-browser-keepdb.worker.ts
 
 `KEEPDB_BROWSER_ONLY=1` browser-only 打包路径已落地在 `packages/duckdb-wasm/bundle.mjs`，源码构建路径不再要求 mvp/eh/coi/node/test 全量产物。`.github/workflows/keepdb-browser.yml` 在不传 `source_run_id` 时会使用该模式打包专用 browser dist。
 
-本机当前 submodules 未初始化，无法直接编译 C++ minimal wasm。已用现有 `eh` runtime 临时模拟 `duckdb-keepdb-browser.js/wasm` 文件形态并验证 browser-only 打包链路；真实体积需要在 GitHub workflow 中不传 `source_run_id` 触发源码构建后确认。
+真实源码构建 run `26352262478` 已通过，触发 tag 为 `keepdb-browser-v0.1.0-rc.1`，提交为 `2f1a72de2f41fdb8772f04b2de84154ed9aeafc1`。artifact 中的 manifest 确认：
+
+```text
+target=keepdb-browser-eh
+wasm source=packages/duckdb-wasm/dist/duckdb-keepdb-browser.wasm
+worker source=packages/duckdb-wasm/dist/duckdb-browser-keepdb.worker.js
+wasm=35846333 bytes
+wasm gzip=8077407 bytes
+```
+
+结论：源码构建、browser-only dist、专用 npm 包和消费验收已打通；但 wasm 体积没有低于 fallback `eh`，精简目标未完成。下一步应继续查 C++/Wasm 链接输入，而不是继续改 JS 包装层。
 
 消费项目已切换到本地 tarball 并通过同一套 OPFS 验收：
 
 ```text
-package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-duckdb-wasm-browser-0.1.0.tgz
-runId=local-browser-only-sim
-duckdbWasmCommit=06133b40577d97e44bc2be2b545614463da65d8c
+package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26352262478/keepdb-duckdb-wasm-browser-0.1.0.tgz
+runId=26352262478
+duckdbWasmCommit=2f1a72de2f41fdb8772f04b2de84154ed9aeafc1
 OPFS_DB_REOPEN_OK OK marker=1,ok, test.db size=536576
 REOPEN_WRITE_OK OK rows=2, test.db size=798720
 SQL_PANEL_OK OK rows=2, latestId=2, test.db size=1060864
 REMOTE_IMPORT_OK OK orders=40, items=80, inventory=8, test.db size=1585152
-PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=local-browser-only-sim
+PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26352262478
 ```
 
 本轮还修复了 `@keepdb/duckdb-wasm-browser` 包内 JS sourcemap 注释残留问题，避免 `worker.js` 在 Vite/开发服务器中引用不存在的 `duckdb-browser-keepdb.worker.js.map`。

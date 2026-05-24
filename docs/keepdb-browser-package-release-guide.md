@@ -1,6 +1,6 @@
 # @keepdb/duckdb-wasm-browser 发布指导
 
-更新时间：2026-05-24 12:45 CST
+更新时间：2026-05-24 13:30 CST
 
 ## 目标
 
@@ -29,7 +29,17 @@ packages/duckdb-wasm/src/bindings/bindings_browser_keepdb.ts
 packages/duckdb-wasm/src/targets/duckdb-browser-keepdb.worker.ts
 ```
 
-CI 中不传 `source_run_id` 时，会构建 `duckdb-keepdb-browser.wasm`，再用 `KEEPDB_BROWSER_ONLY=1 yarn workspace @duckdb/duckdb-wasm build:release` 只打包 browser 主入口、专用 worker 和 `duckdb-keepdb-browser.wasm`。本机当前 submodules 未初始化，因此本轮只能用 `eh` runtime 模拟源码构建后的文件形态；真实 minimal C++ wasm 体积仍需要通过 GitHub workflow 验证。
+CI 中不传 `source_run_id` 时，会构建 `duckdb-keepdb-browser.wasm`，再用 `KEEPDB_BROWSER_ONLY=1 yarn workspace @duckdb/duckdb-wasm build:release` 只打包 browser 主入口、专用 worker 和 `duckdb-keepdb-browser.wasm`。
+
+已通过真实源码构建 run：
+
+```text
+runId=26352262478
+tag=keepdb-browser-v0.1.0-rc.1
+commit=2f1a72de2f41fdb8772f04b2de84154ed9aeafc1
+```
+
+结论：专用源码构建和消费验收已打通，但当前 `duckdb-keepdb-browser.wasm` 体积仍与 fallback `eh` 基本一致，尚未达到“精简版 wasm”的体积目标。
 
 ## 本地产物
 
@@ -46,16 +56,18 @@ KEEPDB_SOURCE_RUN_ID=26322240868 yarn workspace @keepdb/duckdb-wasm-browser buil
 npm pack ./packages/keepdb-duckdb-wasm-browser --pack-destination /tmp
 ```
 
-当前本地 fallback/simulation 结果：
+当前真实源码构建结果：
 
 ```text
-/tmp/keepdb-duckdb-wasm-browser-0.1.0.tgz
+/tmp/keepdb-browser-run-26352262478/keepdb-duckdb-wasm-browser-0.1.0.tgz
 package size=8.3 MB
 unpacked size=36.7 MB
 wasm=35846333 bytes
-wasm gzip=8077422 bytes
-worker=775695 bytes
-worker gzip=189457 bytes
+wasm gzip=8077407 bytes
+worker=775707 bytes
+worker gzip=189464 bytes
+wasm source=packages/duckdb-wasm/dist/duckdb-keepdb-browser.wasm
+worker source=packages/duckdb-wasm/dist/duckdb-browser-keepdb.worker.js
 ```
 
 ## GitHub Workflow
@@ -99,7 +111,7 @@ workflow 职责：
 安装本地 tarball：
 
 ```bash
-pnpm add /tmp/keepdb-duckdb-wasm-browser-0.1.0.tgz
+pnpm add /tmp/keepdb-browser-run-26352262478/keepdb-duckdb-wasm-browser-0.1.0.tgz
 ```
 
 验证：
@@ -112,17 +124,17 @@ pnpm verify:opfs
 已通过输出：
 
 ```text
-package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-duckdb-wasm-browser-0.1.0.tgz
-runId=local-browser-only-sim
-duckdbWasmCommit=06133b40577d97e44bc2be2b545614463da65d8c
+package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26352262478/keepdb-duckdb-wasm-browser-0.1.0.tgz
+runId=26352262478
+duckdbWasmCommit=2f1a72de2f41fdb8772f04b2de84154ed9aeafc1
 OPFS_DB_REOPEN_OK OK marker=1,ok, test.db size=536576
 REOPEN_WRITE_OK OK rows=2, test.db size=798720
 SQL_PANEL_OK OK rows=2, latestId=2, test.db size=1060864
 REMOTE_IMPORT_OK OK orders=40, items=80, inventory=8, test.db size=1585152
-PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=local-browser-only-sim
+PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26352262478
 ```
 
-说明：`local-browser-only-sim` 是本机把现有 `duckdb-eh.js/wasm` 临时复制为 `duckdb-keepdb-browser.js/wasm` 后验证 `KEEPDB_BROWSER_ONLY=1` 打包链路的结果，不代表 minimal profile 的最终体积。
+说明：这组输出来自真实 GitHub artifact，不是本机 simulation。
 
 ## 发布判断
 
@@ -135,10 +147,4 @@ PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=lo
 
 ## 下一步
 
-触发一次不带 `source_run_id` 的 workflow，检查：
-
-- `dist/build-manifest.json` 中 `target` 是否为 `keepdb-browser-eh`。
-- `files.wasm.source` 是否为 `packages/duckdb-wasm/dist/duckdb-keepdb-browser.wasm`。
-- wasm 是否低于当前 fallback `35,846,333 bytes`。
-- 消费项目安装 artifact 后 `pnpm verify:opfs` 是否仍通过。
-- GitHub workflow 日志中 browser dist 步骤是否显示 `KEEPDB_BROWSER_ONLY=true`。
+当前已确认：真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，但 wasm 体积未降低。下一步优化重点不是 JS package，而是继续收窄 C++/Wasm 链接输入，确认 extension config 是否实际减少 linked code，以及 Parquet/httpfs/loadable extension 组合是否仍把主要体积留在主 wasm。
