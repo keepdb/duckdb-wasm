@@ -1,6 +1,6 @@
 # @keepdb/duckdb-wasm-browser 发布指导
 
-更新时间：2026-05-25 00:33 CST
+更新时间：2026-05-25 02:41 CST
 
 ## 标准工作流
 
@@ -70,12 +70,21 @@ CI 中不传 `source_run_id` 时，会构建 `duckdb-keepdb-browser.wasm`，再�
 最新已通过真实源码构建 run：
 
 ```text
+runId=26369040899
+tag=keepdb-browser-v0.1.0-rc.6
+commit=0535e34a68cd55f9680a8a5aa150f84b784cbd74
+purpose=artifact 内新增 wasm-analysis.json 和 extension-wasm/*.analysis.json
+```
+
+上一轮功能等价源码构建 run：
+
+```text
 runId=26367485075
 tag=keepdb-browser-v0.1.0-rc.5
 commit=15d5c2ecdf99d22b856cf06363a64d29f56e0820
 ```
 
-上一轮通过 run：
+再上一轮通过 run：
 
 ```text
 runId=26365410999
@@ -100,7 +109,7 @@ KEEPDB_SOURCE_RUN_ID=26322240868 yarn workspace @keepdb/duckdb-wasm-browser buil
 npm pack ./packages/keepdb-duckdb-wasm-browser --pack-destination /tmp
 ```
 
-当前 `rc.5` 真实源码构建结果：
+上一轮 `rc.5` 真实源码构建结果：
 
 ```text
 /tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
@@ -111,6 +120,19 @@ worker=544821 bytes
 worker gzip=129472 bytes
 wasm source=packages/duckdb-wasm/dist/duckdb-keepdb-browser.wasm
 worker source=packages/duckdb-wasm/dist/duckdb-browser-keepdb.worker.js
+```
+
+当前 `rc.6` 真实源码构建结果：
+
+```text
+/tmp/keepdb-browser-run-26369040899/keepdb-duckdb-wasm-browser-0.1.0.tgz
+artifact tgz size=8110717 bytes
+wasm=32945449 bytes
+wasm gzip=7957689 bytes
+worker=544821 bytes
+worker gzip=129472 bytes
+extension-wasm/parquet.duckdb_extension.wasm=2132841 bytes gzip=646278 bytes imports=1518
+extension-wasm/core_functions.duckdb_extension.wasm=2980912 bytes gzip=533157 bytes imports=2418
 ```
 
 ## GitHub Workflow
@@ -130,8 +152,8 @@ source_run_id=26322240868
 tag 触发：
 
 ```bash
-git tag keepdb-browser-v0.1.0-rc.5
-git push origin keepdb-browser-v0.1.0-rc.5
+git tag keepdb-browser-v0.1.0-rc.6
+git push origin keepdb-browser-v0.1.0-rc.6
 ```
 
 workflow 职责：
@@ -165,7 +187,7 @@ node scripts/analyze-keepdb-browser-wasm.mjs \
 安装本地 tarball：
 
 ```bash
-pnpm add /tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
+pnpm add /tmp/keepdb-browser-run-26369040899/keepdb-duckdb-wasm-browser-0.1.0.tgz
 ```
 
 验证：
@@ -175,7 +197,20 @@ pnpm build
 pnpm verify:opfs
 ```
 
-最新 `rc.5` 已通过输出：
+最新 `rc.6` 已通过输出：
+
+```text
+package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26369040899/keepdb-duckdb-wasm-browser-0.1.0.tgz
+runId=26369040899
+duckdbWasmCommit=0535e34a68cd55f9680a8a5aa150f84b784cbd74
+OPFS_DB_REOPEN_OK OK marker=1,ok, test.db size=536576
+REOPEN_WRITE_OK OK rows=2, test.db size=798720
+SQL_PANEL_OK OK rows=2, latestId=2, test.db size=1060864
+REMOTE_IMPORT_OK OK orders=40, items=80, inventory=8, test.db size=1585152
+PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26369040899
+```
+
+上一轮 `rc.5` 通过输出：
 
 ```text
 package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
@@ -212,4 +247,4 @@ conclusion=success
 
 ## 下一步
 
-当前已确认：`keepdb-browser-v0.1.0-rc.5` 真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，并取得有限体积下降。C API export 过滤的增量收益很小；诊断脚本进一步证明 `Export` section 本身已达约 6.0 MiB。下一阶段应先以 Parquet side module 的实际 imports 推导最小动态链接导出集合，再评估 `duckdb_web` 自身的 Arrow result path 和 DuckDB core 静态库，而不是继续微调 C API 名单。
+当前已确认：`keepdb-browser-v0.1.0-rc.6` 真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，并已在 artifact 中带出主 wasm 与同源 `parquet` / `core_functions` extension wasm 的分析 JSON。下一阶段应基于这些同源 imports 推导最小动态链接导出集合，再评估 `duckdb_web` 自身的 Arrow result path 和 DuckDB core 静态库，而不是继续微调 C API 名单。

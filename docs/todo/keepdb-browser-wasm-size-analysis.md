@@ -90,12 +90,55 @@ wasm section：
 4. `read_parquet('https://...')` 是当前验收项，因此 Parquet loadable extension 链路不能直接移除。
 5. 公网 `https://extensions.duckdb.org/v1.5.3/wasm_eh/parquet.duckdb_extension.wasm` 可下载，但它的 imports 与 rc.5 主 wasm 不能直接对齐；本项目下一步必须使用同一次 GitHub source build 产出的 extension wasm 做导出集合推导。
 
+## rc.6 同源 Extension 诊断
+
+来源：
+
+```text
+tag=keepdb-browser-v0.1.0-rc.6
+runId=26369040899
+commit=0535e34a68cd55f9680a8a5aa150f84b784cbd74
+```
+
+artifact 新增文件已确认：
+
+```text
+wasm-analysis.json
+extension-wasm/core_functions.duckdb_extension.wasm
+extension-wasm/core_functions.duckdb_extension.wasm.analysis.json
+extension-wasm/parquet.duckdb_extension.wasm
+extension-wasm/parquet.duckdb_extension.wasm.analysis.json
+```
+
+同源构建诊断：
+
+| wasm | raw bytes | gzip bytes | imports | exports | Code bytes | Export bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| main `duckdb.wasm` | 32,945,449 | 7,957,689 | 403 | 65,029 | 23,778,243 | 6,329,868 |
+| `parquet.duckdb_extension.wasm` | 2,132,841 | 646,278 | 1,518 | 723 | 1,413,970 | 63,567 |
+| `core_functions.duckdb_extension.wasm` | 2,980,912 | 533,157 | 2,418 | 2,254 | 2,330,689 | 307,243 |
+
+消费项目已安装 rc.6 tarball 并通过：
+
+```text
+package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26369040899/keepdb-duckdb-wasm-browser-0.1.0.tgz
+runId=26369040899
+duckdbWasmCommit=0535e34a68cd55f9680a8a5aa150f84b784cbd74
+OPFS_DB_REOPEN_OK OK marker=1,ok, test.db size=536576
+REOPEN_WRITE_OK OK rows=2, test.db size=798720
+SQL_PANEL_OK OK rows=2, latestId=2, test.db size=1060864
+REMOTE_IMPORT_OK OK orders=40, items=80, inventory=8, test.db size=1585152
+PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26369040899
+```
+
+结论：rc.6 没有改变主 wasm 体积，但已经拿到同一次源码构建的 extension import 证据。主 wasm 当前 `65,029` exports，两个同源 extension imports 合计远小于该规模；下一步可以进入最小导出集合实验。
+
 ## 下一实验
 
 优先级按收益可能性和风险排序：
 
-1. 从下一次 `keepdb-browser` source build artifact 的 `extension-wasm/*.analysis.json` 读取实际 Parquet side module imports。
-2. 生成“实际 Parquet side module imports + KeepDB 必需 C API”的最小导出集合，和当前从主模块导出反推的 `exported_list.txt` 对比。
+1. 从 rc.6 artifact 的 `extension-wasm/*.analysis.json` 读取实际 side module imports。
+2. 生成“`parquet` + `core_functions` 实际 imports + KeepDB 必需 C API”的最小导出集合，和当前从主模块导出反推的 `exported_list.txt` 对比。
 3. 如果最小导出集合能成功链接并通过消费项目完整 OPFS 验收，测量 `Export` 段和 gzip 变化。
 4. 在导出面收窄仍不足时，再分析 `duckdb_web` 源码列表中 JSON insert、CSV insert、UDF 等未被 KeepDB 消费的路径是否能用 profile 开关排除。
 5. 不在本阶段删除 Arrow result path；这需要先设计新的 query result 协议，否则会直接破坏 `AsyncDuckDBConnection.query()` 消费方式。
