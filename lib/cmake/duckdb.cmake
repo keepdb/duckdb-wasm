@@ -15,7 +15,11 @@ endif()
 set(DUCKDB_CXX_FLAGS "${DUCKDB_CXX_FLAGS} -Wno-unqualified-std-cast-call -DDUCKDB_DEBUG_NO_SAFETY -DDUCKDB_FROM_DUCKDB_WASM")
 message("DUCKDB_CXX_FLAGS=${DUCKDB_CXX_FLAGS}")
 
-set(DUCKDB_EXTENSIONS "json;core_functions")
+set(DUCKDB_EXTENSIONS "json;core_functions" CACHE STRING "DuckDB extensions built into the wasm DuckDB ExternalProject")
+if(DEFINED ENV{DUCKDB_WASM_DUCKDB_EXTENSIONS})
+  set(DUCKDB_EXTENSIONS "$ENV{DUCKDB_WASM_DUCKDB_EXTENSIONS}" CACHE STRING "DuckDB extensions built into the wasm DuckDB ExternalProject" FORCE)
+endif()
+message("DUCKDB_EXTENSIONS=${DUCKDB_EXTENSIONS}")
 # Escape semicolons in DUCKDB_EXTENSIONS before passing to ExternalProject_Add
 string(REPLACE ";" "$<SEMICOLON>" DUCKDB_EXTENSIONS_PACKED "${DUCKDB_EXTENSIONS}")
 

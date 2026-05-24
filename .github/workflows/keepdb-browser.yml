@@ -78,10 +78,14 @@ jobs:
               with:
                   key: keepdb-browser
 
+            - name: Install Wasm analysis tools
+              if: steps.source_run.outputs.use_source_artifacts == 'false'
+              run: sudo apt-get update && sudo apt-get install -y wabt
+
             - name: Build KeepDB browser Wasm profile
               if: steps.source_run.outputs.use_source_artifacts == 'false'
               run: |
-                  USE_GENERATED_EXPORTED_LIST=no ./scripts/wasm_build_keepdb_browser.sh
+                  USE_GENERATED_EXPORTED_LIST=yes ./scripts/wasm_build_keepdb_browser.sh
 
             - name: Install dependencies
               run: yarn install --frozen-lockfile
