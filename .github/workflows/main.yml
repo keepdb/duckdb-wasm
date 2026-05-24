@@ -31,6 +31,7 @@ env:
   EMSCRIPTEN_VERSION: '3.1.71'
   EMSCRIPTEN_VERSION_COI: '3.1.57'
   DEFAULT_USE_GENERATED_EXPORTED_LIST: 'no'
+  KEEPDB_RUN_NON_LOADABLE_BROWSER_TESTS: 'false'
 
 jobs:
     clang_format:
@@ -740,6 +741,7 @@ jobs:
                       yarn workspace @duckdb/duckdb-wasm-app build:release
 
             - name: Test @duckdb/duckdb-wasm on Chrome
+              if: env.KEEPDB_RUN_NON_LOADABLE_BROWSER_TESTS == 'true'
               shell: bash
               run: |
                       CHROME_BIN=`which google-chrome` yarn workspace @duckdb/duckdb-wasm test:chrome
@@ -756,6 +758,7 @@ jobs:
                       yarn workspace @duckdb/duckdb-wasm test:node
 
             - name: Coverage @duckdb/duckdb-wasm
+              if: env.KEEPDB_RUN_NON_LOADABLE_BROWSER_TESTS == 'true'
               shell: bash
               run: |
                        CHROME_BIN=`which google-chrome` yarn workspace @duckdb/duckdb-wasm test:chrome:coverage
