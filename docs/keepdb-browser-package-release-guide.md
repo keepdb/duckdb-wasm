@@ -1,6 +1,6 @@
 # @keepdb/duckdb-wasm-browser 发布指导
 
-更新时间：2026-05-24 21:40 CST
+更新时间：2026-05-24 22:58 CST
 
 ## 标准工作流
 
@@ -67,7 +67,15 @@ packages/duckdb-wasm/src/targets/duckdb-browser-keepdb.worker.ts
 
 CI 中不传 `source_run_id` 时，会构建 `duckdb-keepdb-browser.wasm`，再用 `KEEPDB_BROWSER_ONLY=1 yarn workspace @duckdb/duckdb-wasm build:release` 只打包 browser 主入口、专用 worker 和 `duckdb-keepdb-browser.wasm`。
 
-最近已通过真实源码构建 run：
+最新已通过真实源码构建 run：
+
+```text
+runId=26363804188
+tag=keepdb-browser-v0.1.0-rc.2
+commit=54bf2caf0a430acfe2ae8a19e721ed1107db6773
+```
+
+上一轮通过 run：
 
 ```text
 runId=26352262478
@@ -92,14 +100,13 @@ KEEPDB_SOURCE_RUN_ID=26322240868 yarn workspace @keepdb/duckdb-wasm-browser buil
 npm pack ./packages/keepdb-duckdb-wasm-browser --pack-destination /tmp
 ```
 
-当前真实源码构建结果：
+当前 `rc.2` 真实源码构建结果：
 
 ```text
-/tmp/keepdb-browser-run-26352262478/keepdb-duckdb-wasm-browser-0.1.0.tgz
-package size=8.3 MB
-unpacked size=36.7 MB
+/tmp/keepdb-browser-run-26363804188/keepdb-duckdb-wasm-browser-0.1.0.tgz
+artifact tgz size=7.9 MiB
 wasm=35846333 bytes
-wasm gzip=8077407 bytes
+wasm gzip=8077411 bytes
 worker=775707 bytes
 worker gzip=189464 bytes
 wasm source=packages/duckdb-wasm/dist/duckdb-keepdb-browser.wasm
@@ -147,7 +154,7 @@ workflow 职责：
 安装本地 tarball：
 
 ```bash
-pnpm add /tmp/keepdb-browser-run-26352262478/keepdb-duckdb-wasm-browser-0.1.0.tgz
+pnpm add /tmp/keepdb-browser-run-26363804188/keepdb-duckdb-wasm-browser-0.1.0.tgz
 ```
 
 验证：
@@ -157,17 +164,17 @@ pnpm build
 pnpm verify:opfs
 ```
 
-已通过输出：
+最新 `rc.2` 已通过输出：
 
 ```text
-package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26352262478/keepdb-duckdb-wasm-browser-0.1.0.tgz
-runId=26352262478
-duckdbWasmCommit=2f1a72de2f41fdb8772f04b2de84154ed9aeafc1
+package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26363804188/keepdb-duckdb-wasm-browser-0.1.0.tgz
+runId=26363804188
+duckdbWasmCommit=54bf2caf0a430acfe2ae8a19e721ed1107db6773
 OPFS_DB_REOPEN_OK OK marker=1,ok, test.db size=536576
 REOPEN_WRITE_OK OK rows=2, test.db size=798720
 SQL_PANEL_OK OK rows=2, latestId=2, test.db size=1060864
 REMOTE_IMPORT_OK OK orders=40, items=80, inventory=8, test.db size=1585152
-PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26352262478
+PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26363804188
 ```
 
 说明：这组输出来自真实 GitHub artifact，不是本机 simulation。
@@ -192,4 +199,4 @@ conclusion=success
 
 ## 下一步
 
-当前已确认：真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，但 wasm 体积未降低。下一步先打 `keepdb-browser-v0.1.0-rc.2`，用最新 Main 绿色 commit 重跑专用 browser package workflow 和消费项目验收；随后再把体积优化作为独立阶段处理。
+当前已确认：`keepdb-browser-v0.1.0-rc.2` 真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，但 wasm 体积仍未降低。下一阶段把体积优化作为独立任务处理，重点查 C++/Wasm 链接输入和 extension config 实际裁剪效果。
