@@ -4,8 +4,14 @@ PROJECT_ROOT="$(cd $(dirname "$BASH_SOURCE[0]") && cd .. && pwd)" &> /dev/null
 BADGEGEN=${PROJECT_ROOT}/node_modules/.bin/badge
 
 cd ${PROJECT_ROOT}/submodules/duckdb
-VERSION=`git describe --tags --abbrev=0 | tr -d "v"`
-DEV=`git describe --tags --long | cut -f2 -d-`
+DESCRIBE=`git describe --tags --match 'v[0-9]*' --long 2>/dev/null || true`
+if [[ -n "${DESCRIBE}" ]] ; then
+    VERSION=`git describe --tags --match 'v[0-9]*' --abbrev=0 | tr -d "v"`
+    DEV=`echo "${DESCRIBE}" | cut -f2 -d-`
+else
+    VERSION="0.0.0"
+    DEV=`git rev-list --count HEAD 2>/dev/null || echo 0`
+fi
 
 BADGE_LABEL_COLOR="#555"
 BADGE_VALUE_COLOR="#007ec6"
