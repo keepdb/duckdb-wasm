@@ -1,19 +1,19 @@
 # Browser Runtime Loading Progress 待办
 
-更新时间：2026-05-24
+更新时间：2026-05-25
 
 ## 背景
 
-当前 `@keepdb/duckdb-wasm-browser` 第一版核心下载体积：
+当前 `@keepdb/duckdb-wasm-browser` rc.4 核心下载体积：
 
 ```text
-duckdb.wasm 原始大小：35,846,333 bytes
-duckdb.wasm gzip：约 8,077,422 bytes
-worker.js 原始大小：775,748 bytes
-worker.js gzip：约 189,495 bytes
+duckdb.wasm 原始大小：32,949,431 bytes
+duckdb.wasm gzip：约 7,959,048 bytes
+worker.js 原始大小：548,132 bytes
+worker.js gzip：约 129,825 bytes
 ```
 
-放到 CDN 后，首次访问用户通常需要下载约 `8.3 MB` 压缩资源，并额外等待 Wasm 编译、实例化和 OPFS DB 打开。
+放到 CDN 后，首次访问用户通常仍需要下载约 `8.1 MB` 压缩资源，并额外等待 Wasm 编译、实例化和 OPFS DB 打开。
 
 ## 判断
 
