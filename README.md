@@ -35,6 +35,31 @@ Duckdb-Wasm speaks Arrow fluently, reads Parquet, CSV and JSON files backed by F
 Try it out at [shell.duckdb.org](https://shell.duckdb.org) or at [duckdb.org/visualizer](https://duckdb.org/visualizer).
 [External third party embedding of DuckDB-Wasm](https://github.com/davidgasquez/awesome-duckdb?tab=readme-ov-file#web-clients), read the [API documentation](https://shell.duckdb.org/docs/modules/index.html), check out the [web-app examples](https://github.com/duckdb-wasm-examples), and chat with us on [Discord](https://discord.duckdb.org).
 
+## KeepDB OPFS Persistence Work
+
+This fork currently carries OPFS database persistence work for browser-backed DuckDB files. The accepted validation path is GitHub Actions artifact packaging plus consumption from `/Users/benz/Codes/Lesson/duckdb-wasm-web`.
+
+Key docs:
+
+* [OPFS persistence implementation guide](docs/opfs-persistence-implementation-guide.md)
+* [OPFS persistence midterm review](docs/opfs-persistence-midterm-review.md)
+* [OPFS persistence next work guide](docs/opfs-persistence-next-work-guide.md)
+* [KeepDB browser package release guide](docs/keepdb-browser-package-release-guide.md)
+
+The validation baseline is not same-worker query success. A passing result must show `opfs://test.db` as a non-empty physical OPFS file, terminate the worker, reopen the same database from a new worker, read back persisted data, and support a reopen-then-write checkpoint cycle.
+
+### KeepDB Browser Package
+
+This fork also contains a dedicated browser package target:
+
+* Package: `@keepdb/duckdb-wasm-browser`
+* Workspace: `packages/keepdb-duckdb-wasm-browser`
+* Build script: `scripts/build-keepdb-browser-package.mjs`
+* GitHub workflow: `.github/workflows/keepdb-browser.yml`
+* Release tags: `keepdb-browser-v*` or `keepdb-duckdb-wasm-browser-v*`
+
+The first package profile is `keepdb-browser-opfs`. It ships a single browser runtime target as `dist/wasm/duckdb.wasm` plus `dist/worker.js`, while keeping the OPFS database persistence validation contract. When the dedicated CI workflow runs without `source_run_id`, it builds the `duckdb-keepdb-browser.wasm` C++ profile and packages it with `KEEPDB_BROWSER_ONLY=1`; when a source run id is provided, it can package the validated `eh` artifact as a fallback.
+
 ## DuckDB and DuckDB-Wasm
 
 DuckDB-Wasm is currently based on DuckDB v1.5.3.

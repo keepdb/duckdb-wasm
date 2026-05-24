@@ -1,0 +1,114 @@
+name: 'KeepDB Browser Package'
+
+on:
+    push:
+        tags:
+            - 'keepdb-browser-v*'
+            - 'keepdb-duckdb-wasm-browser-v*'
+    workflow_dispatch:
+        inputs:
+            source_run_id:
+                description: 'Optional Main workflow run id that contains wasm-*-loadable artifacts. If omitted, CI builds the KeepDB browser minimal profile from source.'
+                required: false
+                type: string
+
+permissions:
+    contents: read
+    actions: read
+
+jobs:
+    package:
+        name: Build @keepdb/duckdb-wasm-browser
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  submodules: 'recursive'
+                  fetch-depth: 0
+
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: '22'
+
+            - name: Resolve source run id
+              id: source_run
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  INPUT_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+              run: |
+                  set -euo pipefail
+                  if [ -n "${INPUT_SOURCE_RUN_ID}" ]; then
+                    source_run_id="${INPUT_SOURCE_RUN_ID}"
+                    use_source_artifacts="true"
+                  else
+                    source_run_id="${GITHUB_RUN_ID}"
+                    use_source_artifacts="false"
+                  fi
+
+                  echo "source_run_id=${source_run_id}" >> "${GITHUB_OUTPUT}"
+                  echo "use_source_artifacts=${use_source_artifacts}" >> "${GITHUB_OUTPUT}"
+                  echo "SOURCE_RUN_ID=${source_run_id}"
+                  echo "USE_SOURCE_ARTIFACTS=${use_source_artifacts}"
+
+            - name: Download loadable Wasm artifacts
+              if: steps.source_run.outputs.use_source_artifacts == 'true'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  SOURCE_RUN_ID: ${{ steps.source_run.outputs.source_run_id }}
+              run: |
+                  set -euo pipefail
+                  mkdir -p ./packages/duckdb-wasm/src/bindings
+                  gh run download "${SOURCE_RUN_ID}" --name wasm-mvp-loadable --dir ./packages/duckdb-wasm/src/bindings
+                  gh run download "${SOURCE_RUN_ID}" --name wasm-eh-loadable --dir ./packages/duckdb-wasm/src/bindings
+                  gh run download "${SOURCE_RUN_ID}" --name wasm-coi-loadable --dir ./packages/duckdb-wasm/src/bindings
+
+            - name: Prepare repository for source build
+              if: steps.source_run.outputs.use_source_artifacts == 'false'
+              run: |
+                  make apply_patches
+
+            - uses: mymindstorm/setup-emsdk@v14
+              if: steps.source_run.outputs.use_source_artifacts == 'false'
+              with:
+                  version: '3.1.71'
+
+            - name: Setup Ccache
+              if: steps.source_run.outputs.use_source_artifacts == 'false'
+              uses: hendrikmuhs/ccache-action@main
+              with:
+                  key: keepdb-browser
+
+            - name: Build KeepDB browser Wasm profile
+              if: steps.source_run.outputs.use_source_artifacts == 'false'
+              run: |
+                  USE_GENERATED_EXPORTED_LIST=no ./scripts/wasm_build_keepdb_browser.sh
+
+            - name: Install dependencies
+              run: yarn install --frozen-lockfile
+
+            - name: Build DuckDB-Wasm browser dist
+              env:
+                  USE_SOURCE_ARTIFACTS: ${{ steps.source_run.outputs.use_source_artifacts }}
+              run: |
+                  rm -rf ./packages/duckdb-wasm/dist
+                  if [ "${USE_SOURCE_ARTIFACTS}" = "false" ]; then
+                    KEEPDB_BROWSER_ONLY=1 yarn workspace @duckdb/duckdb-wasm build:release
+                  else
+                    yarn workspace @duckdb/duckdb-wasm build:release
+                  fi
+
+            - name: Build KeepDB browser package
+              env:
+                  KEEPDB_SOURCE_RUN_ID: ${{ steps.source_run.outputs.source_run_id }}
+              run: yarn workspace @keepdb/duckdb-wasm-browser build
+
+            - name: Pack KeepDB browser package
+              run: |
+                  mkdir -p ./dist/keepdb-browser
+                  npm pack ./packages/keepdb-duckdb-wasm-browser --pack-destination ./dist/keepdb-browser
+                  cp ./packages/keepdb-duckdb-wasm-browser/dist/build-manifest.json ./dist/keepdb-browser/build-manifest.json
+
+            - uses: actions/upload-artifact@v7
+              with:
+                  name: keepdb-duckdb-wasm-browser
+                  path: ./dist/keepdb-browser

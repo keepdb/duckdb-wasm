@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "$BASH_SOURCE[0]")" && cd .. && pwd)"
+
+export DUCKDB_WASM_LOADABLE_EXTENSIONS=1
+export DUCKDB_EXTENSION_CONFIGS=extension_config_keepdb_browser.cmake
+export USE_GENERATED_EXPORTED_LIST="${USE_GENERATED_EXPORTED_LIST:-no}"
+
+"${PROJECT_ROOT}/scripts/wasm_build_lib.sh" relsize keepdb-browser "${1:-"${PROJECT_ROOT}/submodules/duckdb"}"

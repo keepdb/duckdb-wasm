@@ -1,5 +1,11 @@
 # DuckDB-Wasm OPFS 数据库持久化实现指导
 
+相关文档：
+
+- 中期盘点：[`opfs-persistence-midterm-review.md`](./opfs-persistence-midterm-review.md)
+- 下一步工作指导：[`opfs-persistence-next-work-guide.md`](./opfs-persistence-next-work-guide.md)
+- KeepDB browser 包发布指导：[`keepdb-browser-package-release-guide.md`](./keepdb-browser-package-release-guide.md)
+
 ## 标准工作流程：GitHub CI 打包 + duckdb-wasm-web 消费
 
 本任务默认采用以下闭环作为标准交付流程：

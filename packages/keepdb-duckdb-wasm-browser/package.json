@@ -1,0 +1,42 @@
+{
+    "name": "@keepdb/duckdb-wasm-browser",
+    "version": "0.1.0",
+    "description": "KeepDB browser-focused DuckDB-Wasm runtime with OPFS persistence support",
+    "license": "MIT",
+    "type": "module",
+    "private": false,
+    "sideEffects": false,
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./manifest": "./dist/build-manifest.json",
+        "./wasm": "./dist/wasm/duckdb.wasm",
+        "./wasm/duckdb.wasm": "./dist/wasm/duckdb.wasm",
+        "./worker": "./dist/worker.js",
+        "./worker.js": "./dist/worker.js"
+    },
+    "scripts": {
+        "build": "node ../../scripts/build-keepdb-browser-package.mjs",
+        "pack:local": "yarn build && npm pack --pack-destination ../../dist/keepdb-browser"
+    },
+    "dependencies": {
+        "apache-arrow": "^17.0.0",
+        "qs": "^6.14.1"
+    },
+    "keywords": [
+        "duckdb",
+        "wasm",
+        "opfs",
+        "browser",
+        "keepdb"
+    ]
+}
