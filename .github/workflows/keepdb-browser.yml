@@ -79,7 +79,6 @@ jobs:
                   key: keepdb-browser
 
             - name: Install Wasm analysis tools
-              if: steps.source_run.outputs.use_source_artifacts == 'false'
               run: sudo apt-get update && sudo apt-get install -y wabt
 
             - name: Build KeepDB browser Wasm profile
@@ -107,10 +106,20 @@ jobs:
               run: yarn workspace @keepdb/duckdb-wasm-browser build
 
             - name: Pack KeepDB browser package
+              env:
+                  USE_SOURCE_ARTIFACTS: ${{ steps.source_run.outputs.use_source_artifacts }}
               run: |
                   mkdir -p ./dist/keepdb-browser
                   npm pack ./packages/keepdb-duckdb-wasm-browser --pack-destination ./dist/keepdb-browser
                   cp ./packages/keepdb-duckdb-wasm-browser/dist/build-manifest.json ./dist/keepdb-browser/build-manifest.json
+                  node ./scripts/analyze-keepdb-browser-wasm.mjs ./packages/keepdb-duckdb-wasm-browser/dist --json > ./dist/keepdb-browser/wasm-analysis.json
+                  if [ "${USE_SOURCE_ARTIFACTS}" = "false" ]; then
+                    mkdir -p ./dist/keepdb-browser/extension-wasm
+                    find ./build -path '*extension_repository*' -type f -name '*.wasm' -print | while read -r extension_wasm; do
+                      cp "${extension_wasm}" "./dist/keepdb-browser/extension-wasm/$(basename "${extension_wasm}")"
+                      node ./scripts/analyze-keepdb-browser-wasm.mjs "${extension_wasm}" --json > "./dist/keepdb-browser/extension-wasm/$(basename "${extension_wasm}").analysis.json"
+                    done
+                  fi
 
             - uses: actions/upload-artifact@v7
               with:

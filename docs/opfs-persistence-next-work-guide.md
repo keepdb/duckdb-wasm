@@ -23,6 +23,26 @@
 3. 继续排查 wasm 体积仍偏大的问题，重点看 Arrow result path、DuckDB core 静态库和 Parquet loadable extension 依赖。
 4. 体积优化每次改动后仍必须回到 `/Users/benz/Codes/Lesson/duckdb-wasm-web` 跑同一套 `pnpm verify:opfs`。
 
+本轮新增体积诊断入口：
+
+```bash
+node scripts/analyze-keepdb-browser-wasm.mjs \
+  /tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
+```
+
+`rc.5` 诊断事实：
+
+```text
+wasm=32945449 bytes gzip=7957674 bytes
+Code section=23778243 bytes functions=57529
+Export section=6329868 bytes exports=65029
+Data section=2570315 bytes
+```
+
+由此调整下一实验优先级：先验证“Parquet side module 实际 imports + KeepDB 必需 C API”能否替代当前宽泛的动态链接导出集合，再考虑排除 JSON/CSV/UDF 等源码路径；Arrow query result path 暂不删除，因为当前 JS 查询结果消费仍依赖它。
+
+`.github/workflows/keepdb-browser.yml` 已补充 `wasm-analysis.json` 和源码构建路径下的 `extension-wasm/*.analysis.json` artifact。下一次 rc 需要先看同一次构建的 extension imports，再决定导出集合收窄策略；公网 extension wasm 已验证不能直接作为 rc.5 的精确依据。
+
 成功指标以消费项目输出为准：
 
 ```text

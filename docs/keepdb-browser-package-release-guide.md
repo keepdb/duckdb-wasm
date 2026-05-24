@@ -141,7 +141,18 @@ workflow 职责：
 3. 如果是源码构建路径，执行 `KEEPDB_BROWSER_ONLY=1 yarn workspace @duckdb/duckdb-wasm build:release`，避免要求 mvp/eh/coi/node/test 全量产物。
 4. 执行 `yarn workspace @keepdb/duckdb-wasm-browser build`。
 5. 执行 `npm pack ./packages/keepdb-duckdb-wasm-browser`。
-6. 上传 `keepdb-duckdb-wasm-browser` artifact。
+6. 执行 `scripts/analyze-keepdb-browser-wasm.mjs`，生成 `wasm-analysis.json`。
+7. 如果是源码构建路径，收集本次构建出的 `extension_repository` wasm，并为每个 extension wasm 生成分析 JSON。
+8. 上传包含 tarball、`build-manifest.json`、`wasm-analysis.json` 和可选 `extension-wasm/` 的 `keepdb-duckdb-wasm-browser` artifact。
+
+体积分析命令：
+
+```bash
+node scripts/analyze-keepdb-browser-wasm.mjs \
+  /tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
+```
+
+`rc.5` 诊断确认 `Export` section 为 `6,329,868` bytes，包含 `65,029` exports；`Code` section 为 `23,778,243` bytes。因此下一步应优先使用同一次源码构建产出的 loadable Parquet side module imports 推导最小 C++ 导出集合，而不是继续只删除少量 `duckdb_web_*` C API。不要直接用公网 `extensions.duckdb.org` 的 extension wasm 推导 rc 导出名单，因为它可能与当前主 wasm 构建不一致。
 
 ## 消费验证
 
@@ -201,4 +212,4 @@ conclusion=success
 
 ## 下一步
 
-当前已确认：`keepdb-browser-v0.1.0-rc.5` 真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，并取得有限体积下降。C API export 过滤的增量收益很小，下一阶段应继续查 `duckdb_web` 自身的 Arrow result path、DuckDB core 静态库和 Parquet loadable extension 依赖，而不是继续微调导出列表。
+当前已确认：`keepdb-browser-v0.1.0-rc.5` 真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，并取得有限体积下降。C API export 过滤的增量收益很小；诊断脚本进一步证明 `Export` section 本身已达约 6.0 MiB。下一阶段应先以 Parquet side module 的实际 imports 推导最小动态链接导出集合，再评估 `duckdb_web` 自身的 Arrow result path 和 DuckDB core 静态库，而不是继续微调 C API 名单。
