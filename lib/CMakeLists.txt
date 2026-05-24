@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(ignoreMe "${DUCKDB_WASM_VERSION}")
 
 option(DUCKDB_WASM_LOADABLE_EXTENSIONS "Build with loadable extensions" OFF)
+option(USE_GENERATED_EXPORTED_LIST "Link loadable wasm main module with generated exported_list.txt" OFF)
 
 if(DEFINED ENV{DUCKDB_WASM_LOADABLE_EXTENSIONS})
   set(DUCKDB_WASM_LOADABLE_EXTENSIONS ON)
@@ -154,7 +155,7 @@ endif()
 if (DUCKDB_WASM_LOADABLE_EXTENSIONS)
   set(WASM_LINK_FLAGS "${WASM_LINK_FLAGS} -s FILESYSTEM=1 -s ENVIRONMENT='web,node,worker' -s ALLOW_TABLE_GROWTH -lembind")
 
-  if ($ENV{USE_GENERATED_EXPORTED_LIST} STREQUAL "yes")
+  if (USE_GENERATED_EXPORTED_LIST)
     set(WASM_LINK_FLAGS "${WASM_LINK_FLAGS} -s MAIN_MODULE=2 -s EXPORTED_FUNCTIONS='@exported_list.txt'")
   else()
     set(WASM_LINK_FLAGS "${WASM_LINK_FLAGS} -s MAIN_MODULE=1 -s EXPORTED_FUNCTIONS='@../../../lib/base_exported_list.txt'")
