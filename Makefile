@@ -457,6 +457,7 @@ update_exported_list:
 	cd build/relsize/${TARGET} && sed 's/^/_/g' cpp_list > exported_list.txt
         ## filter list of c symbols
 	cd build/relsize/${TARGET} && cat export_list.txt | grep -v "^_" | grep -v "getTempRet" | grep -v "^sched_yield" | grep -v "emscripten_wget" | grep -v "0\\00\\0" | sort > c_exported_list
+	cd build/relsize/${TARGET} && if [ "$${KEEPDB_BROWSER_EXPORT_FILTER:-0}" = "1" ]; then grep -Ev "^(duckdb_web_collect_file_stats|duckdb_web_copy_file_to_buffer|duckdb_web_copy_file_to_path|duckdb_web_export_file_stats|duckdb_web_get_tablenames|duckdb_web_get_tablenames_buffer|duckdb_web_insert_arrow_from_ipc_stream|duckdb_web_insert_csv_from_path|duckdb_web_insert_json_from_path|duckdb_web_prepared_close|duckdb_web_prepared_create|duckdb_web_prepared_create_buffer|duckdb_web_prepared_run|duckdb_web_prepared_send|duckdb_web_tokenize|duckdb_web_tokenize_buffer|duckdb_web_udf_scalar_create|duckdb_web_udf_scalar_call)$$" c_exported_list > c_exported_list.keepdb && mv c_exported_list.keepdb c_exported_list; fi
 	# prepend '_'
 	cd build/relsize/${TARGET} && sed 's/^/_/g' c_exported_list >> exported_list.txt
 	cd build/relsize/${TARGET} && echo '__ZNSt3__26chrono12system_clock9to_time_tERKNS0_10time_pointIS1_NS0_8durationIxNS_5ratioILx1ELx1000000EEEEEEE' >> exported_list.txt
