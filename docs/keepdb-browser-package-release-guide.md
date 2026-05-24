@@ -1,6 +1,42 @@
 # @keepdb/duckdb-wasm-browser 发布指导
 
-更新时间：2026-05-24 13:30 CST
+更新时间：2026-05-24 21:40 CST
+
+## 标准工作流
+
+`@keepdb/duckdb-wasm-browser` 的发布与消费必须走 GitHub artifact 闭环，不以本机 `dist/` 或同 worker 查询成功作为验收依据。
+
+标准流程：
+
+1. 在 `keepdb-duckdb-wasm` 仓库创建专用 tag，格式为 `keepdb-browser-v<version>` 或 `keepdb-browser-v<version>-rc.<n>`。
+2. GitHub Actions 执行 `.github/workflows/keepdb-browser.yml`，生成 `keepdb-duckdb-wasm-browser` artifact。
+3. 下载 artifact 中的 `keepdb-duckdb-wasm-browser-<version>.tgz` 和 `build-manifest.json`。
+4. 在消费项目 `/Users/benz/Codes/Lesson/duckdb-wasm-web` 通过 tarball 安装：
+
+```bash
+pnpm add /tmp/keepdb-browser-run-<runId>/keepdb-duckdb-wasm-browser-<version>.tgz
+```
+
+5. 在消费项目执行：
+
+```bash
+pnpm build
+pnpm verify:opfs
+```
+
+6. 验收输出必须同时包含：
+
+```text
+OPFS_DB_REOPEN_OK
+REOPEN_WRITE_OK
+SQL_PANEL_OK
+REMOTE_IMPORT_OK orders=40, items=80, inventory=8
+PUBLISHED_READ_OK
+```
+
+其中 `OPFS_DB_REOPEN_OK`、`REOPEN_WRITE_OK` 和 `PUBLISHED_READ_OK` 必须证明 OPFS 物理文件 `size > 0`，并且包含 worker terminate 后新 worker reopen 可读、reopen 后可继续写入的链路。
+
+不满足以上任一项时，不允许把包标记为可消费版本。
 
 ## 目标
 
@@ -31,7 +67,7 @@ packages/duckdb-wasm/src/targets/duckdb-browser-keepdb.worker.ts
 
 CI 中不传 `source_run_id` 时，会构建 `duckdb-keepdb-browser.wasm`，再用 `KEEPDB_BROWSER_ONLY=1 yarn workspace @duckdb/duckdb-wasm build:release` 只打包 browser 主入口、专用 worker 和 `duckdb-keepdb-browser.wasm`。
 
-已通过真实源码构建 run：
+最近已通过真实源码构建 run：
 
 ```text
 runId=26352262478
@@ -87,8 +123,8 @@ source_run_id=26322240868
 tag 触发：
 
 ```bash
-git tag keepdb-browser-v0.1.0
-git push origin keepdb-browser-v0.1.0
+git tag keepdb-browser-v0.1.0-rc.2
+git push origin keepdb-browser-v0.1.0-rc.2
 ```
 
 workflow 职责：
@@ -144,7 +180,16 @@ PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26
 - manifest 记录 `sourceRunId`、`duckdbWasmCommit`、wasm size、gzip size。
 - 消费项目使用 `@keepdb/duckdb-wasm-browser` 跑通 `pnpm verify:opfs`。
 - OPFS DB 文件必须真实落盘，不能只看同 worker 查询成功。
+- 主 `Main` workflow 至少要在当前分支有一条绿色验证记录。当前已恢复通过：
+
+```text
+runId=26361798785
+commit=23d868cc81b1dea93b28879498a05df9995ab591
+conclusion=success
+```
+
+说明：普通 non-loadable `Js / Libraries` 的 Chrome/coverage 在 Chrome 148 上出现 `Executed 0 of 194 DISCONNECTED`，已默认跳过；`Js / Libraries (loadable version)` 和 deploy 的 Chrome/Node 仍作为浏览器 CI 信号继续运行。
 
 ## 下一步
 
-当前已确认：真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，但 wasm 体积未降低。下一步优化重点不是 JS package，而是继续收窄 C++/Wasm 链接输入，确认 extension config 是否实际减少 linked code，以及 Parquet/httpfs/loadable extension 组合是否仍把主要体积留在主 wasm。
+当前已确认：真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，但 wasm 体积未降低。下一步先打 `keepdb-browser-v0.1.0-rc.2`，用最新 Main 绿色 commit 重跑专用 browser package workflow 和消费项目验收；随后再把体积优化作为独立阶段处理。

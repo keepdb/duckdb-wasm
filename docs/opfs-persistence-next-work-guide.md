@@ -1,8 +1,46 @@
 # DuckDB-Wasm OPFS 持久化下一步工作指导
 
-更新时间：2026-05-24 13:30 CST
+更新时间：2026-05-24 21:40 CST
+
+## 当前推进顺序
+
+下一步以“可发布、可消费、可复验”为目标，不再把非 loadable Chrome 卡死和 wasm 体积优化混进 OPFS 功能闭环。
+
+执行顺序：
+
+1. 使用最新绿色 `Main` commit 创建 `keepdb-browser-v0.1.0-rc.2`。
+2. 等待 `.github/workflows/keepdb-browser.yml` 产出 `@keepdb/duckdb-wasm-browser` tarball。
+3. 下载 GitHub artifact 到 `/tmp/keepdb-browser-run-<runId>/`。
+4. 在 `/Users/benz/Codes/Lesson/duckdb-wasm-web` 安装 tarball 并执行 `pnpm verify:opfs`。
+5. 记录 run id、commit、tarball、manifest size、OPFS 验收输出。
+6. 只在该闭环通过后，再进入 wasm 体积优化阶段。
+
+成功指标仍以消费项目输出为准：
+
+```text
+OPFS_DB_REOPEN_OK
+REOPEN_WRITE_OK
+SQL_PANEL_OK
+REMOTE_IMPORT_OK orders=40, items=80, inventory=8
+PUBLISHED_READ_OK
+```
 
 ## 最新进展
+
+主 `Main` workflow 已恢复绿色：
+
+```text
+runId=26361798785
+commit=23d868cc81b1dea93b28879498a05df9995ab591
+conclusion=success
+```
+
+本次 CI 处理结论：
+
+- `keepdb-browser-*` tag 不再触发主 npm 发布路径。
+- `scripts/npm_version.sh` 和 `scripts/build_duckdb_badge.sh` 只匹配正式 `v[0-9]*` tag，避免专用 browser tag 污染版本号。
+- non-loadable `Js / Libraries` 的 Chrome/coverage 在 Chrome 148 上会 `Executed 0 of 194 DISCONNECTED`，已默认跳过。
+- `Js / Libraries (loadable version)` 和 `Js / Libraries (loadable version) - Deploy` 的 Chrome/Node 仍通过，作为浏览器 CI 信号。
 
 P0 浏览器验收脚本已在消费项目落地：
 

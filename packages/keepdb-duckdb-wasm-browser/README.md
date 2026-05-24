@@ -50,3 +50,22 @@ The package is only considered valid when the consuming browser project proves:
 - Current worker can be terminated and a new worker can reopen the same OPFS DB.
 - Reopened DB can continue writing and checkpointing.
 - Published DB can be consumed through a `READ_ONLY` manifest path.
+
+KeepDB release validation is performed from the consuming project, using the GitHub artifact tarball:
+
+```bash
+cd /Users/benz/Codes/Lesson/duckdb-wasm-web
+pnpm add /tmp/keepdb-browser-run-<runId>/keepdb-duckdb-wasm-browser-<version>.tgz
+pnpm build
+pnpm verify:opfs
+```
+
+Required success markers:
+
+```text
+OPFS_DB_REOPEN_OK
+REOPEN_WRITE_OK
+SQL_PANEL_OK
+REMOTE_IMPORT_OK
+PUBLISHED_READ_OK
+```
