@@ -70,20 +70,20 @@ CI 中不传 `source_run_id` 时，会构建 `duckdb-keepdb-browser.wasm`，再�
 最新已通过真实源码构建 run：
 
 ```text
-runId=26365410999
-tag=keepdb-browser-v0.1.0-rc.4
-commit=24f8d532c6d68b131afe4757f8dcccf3516de4f1
+runId=26367485075
+tag=keepdb-browser-v0.1.0-rc.5
+commit=15d5c2ecdf99d22b856cf06363a64d29f56e0820
 ```
 
 上一轮通过 run：
 
 ```text
-runId=26363804188
-tag=keepdb-browser-v0.1.0-rc.2
-commit=54bf2caf0a430acfe2ae8a19e721ed1107db6773
+runId=26365410999
+tag=keepdb-browser-v0.1.0-rc.4
+commit=24f8d532c6d68b131afe4757f8dcccf3516de4f1
 ```
 
-结论：专用源码构建和消费验收已打通。`rc.4` 通过 `MAIN_MODULE=2 + generated exported list` 和 `core_functions` 外部构建扩展集合，使 wasm 原始大小从 `35,846,333` bytes 降到 `32,949,431` bytes，但 gzip 只从 `8,077,411` bytes 降到 `7,959,048` bytes，尚未达到明显精简版目标。
+结论：专用源码构建和消费验收已打通。`rc.4` 通过 `MAIN_MODULE=2 + generated exported list` 和 `core_functions` 外部构建扩展集合，使 wasm 原始大小从 `35,846,333` bytes 降到 `32,949,431` bytes。`rc.5` 继续过滤 KeepDB 当前不消费的 C API 导出，wasm 降到 `32,945,449` bytes，gzip 降到 `7,957,674` bytes。该方向安全但收益很小，尚未达到明显精简版目标。
 
 ## 本地产物
 
@@ -100,15 +100,15 @@ KEEPDB_SOURCE_RUN_ID=26322240868 yarn workspace @keepdb/duckdb-wasm-browser buil
 npm pack ./packages/keepdb-duckdb-wasm-browser --pack-destination /tmp
 ```
 
-当前 `rc.4` 真实源码构建结果：
+当前 `rc.5` 真实源码构建结果：
 
 ```text
-/tmp/keepdb-browser-run-26365410999/keepdb-duckdb-wasm-browser-0.1.0.tgz
+/tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
 artifact tgz size=7.7 MiB
-wasm=32949431 bytes
-wasm gzip=7959048 bytes
-worker=548132 bytes
-worker gzip=129825 bytes
+wasm=32945449 bytes
+wasm gzip=7957674 bytes
+worker=544821 bytes
+worker gzip=129472 bytes
 wasm source=packages/duckdb-wasm/dist/duckdb-keepdb-browser.wasm
 worker source=packages/duckdb-wasm/dist/duckdb-browser-keepdb.worker.js
 ```
@@ -130,8 +130,8 @@ source_run_id=26322240868
 tag 触发：
 
 ```bash
-git tag keepdb-browser-v0.1.0-rc.4
-git push origin keepdb-browser-v0.1.0-rc.4
+git tag keepdb-browser-v0.1.0-rc.5
+git push origin keepdb-browser-v0.1.0-rc.5
 ```
 
 workflow 职责：
@@ -154,7 +154,7 @@ workflow 职责：
 安装本地 tarball：
 
 ```bash
-pnpm add /tmp/keepdb-browser-run-26365410999/keepdb-duckdb-wasm-browser-0.1.0.tgz
+pnpm add /tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
 ```
 
 验证：
@@ -164,19 +164,19 @@ pnpm build
 pnpm verify:opfs
 ```
 
-最新 `rc.4` 已通过输出：
+最新 `rc.5` 已通过输出：
 
 ```text
-package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26365410999/keepdb-duckdb-wasm-browser-0.1.0.tgz
-runId=26365410999
-duckdbWasmCommit=24f8d532c6d68b131afe4757f8dcccf3516de4f1
-startedAt=2026-05-24T16:32:50.632Z
-completedAt=2026-05-24T16:33:02.341Z
+package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
+runId=26367485075
+duckdbWasmCommit=15d5c2ecdf99d22b856cf06363a64d29f56e0820
+startedAt=2026-05-24T17:37:53.138Z
+completedAt=2026-05-24T17:38:05.264Z
 OPFS_DB_REOPEN_OK OK marker=1,ok, test.db size=536576
 REOPEN_WRITE_OK OK rows=2, test.db size=798720
 SQL_PANEL_OK OK rows=2, latestId=2, test.db size=1060864
 REMOTE_IMPORT_OK OK orders=40, items=80, inventory=8, test.db size=1585152
-PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26365410999
+PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26367485075
 ```
 
 说明：这组输出来自真实 GitHub artifact，不是本机 simulation。
@@ -201,4 +201,4 @@ conclusion=success
 
 ## 下一步
 
-当前已确认：`keepdb-browser-v0.1.0-rc.4` 真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，并取得有限体积下降。下一阶段继续查 `duckdb_web` 自身的 Arrow/JSON/CSV/insert API 链接面，以及是否需要拆出更窄的 `@keepdb/duckdb-wasm-browser` 初始化 API。
+当前已确认：`keepdb-browser-v0.1.0-rc.5` 真实源码构建 artifact 可被消费项目使用，OPFS 完整验收通过，并取得有限体积下降。C API export 过滤的增量收益很小，下一阶段应继续查 `duckdb_web` 自身的 Arrow result path、DuckDB core 静态库和 Parquet loadable extension 依赖，而不是继续微调导出列表。

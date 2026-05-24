@@ -4,13 +4,13 @@
 
 ## 背景
 
-当前 `@keepdb/duckdb-wasm-browser` rc.4 核心下载体积：
+当前 `@keepdb/duckdb-wasm-browser` rc.5 核心下载体积：
 
 ```text
-duckdb.wasm 原始大小：32,949,431 bytes
-duckdb.wasm gzip：约 7,959,048 bytes
-worker.js 原始大小：548,132 bytes
-worker.js gzip：约 129,825 bytes
+duckdb.wasm 原始大小：32,945,449 bytes
+duckdb.wasm gzip：约 7,957,674 bytes
+worker.js 原始大小：544,821 bytes
+worker.js gzip：约 129,472 bytes
 ```
 
 放到 CDN 后，首次访问用户通常仍需要下载约 `8.1 MB` 压缩资源，并额外等待 Wasm 编译、实例化和 OPFS DB 打开。

@@ -4,22 +4,23 @@
 
 ## 当前推进顺序
 
-`keepdb-browser-v0.1.0-rc.4` 已完成“GitHub 打包 + 消费项目复验”闭环。当前不再把 OPFS 功能正确性、非 loadable Chrome 卡死和 wasm 体积优化混成同一个问题。
+`keepdb-browser-v0.1.0-rc.5` 已完成“GitHub 打包 + 消费项目复验”闭环。当前不再把 OPFS 功能正确性、非 loadable Chrome 卡死和 wasm 体积优化混成同一个问题。
 
 已完成闭环：
 
 1. 使用绿色 `Main` commit 创建 `keepdb-browser-v0.1.0-rc.2`，完成 OPFS 功能闭环。
 2. `.github/workflows/keepdb-browser.yml` 已产出 `@keepdb/duckdb-wasm-browser` tarball。
 3. 继续创建 `keepdb-browser-v0.1.0-rc.4`，验证 generated export list 体积优化。
-4. artifact 已下载到 `/tmp/keepdb-browser-run-26365410999/`。
-5. `/Users/benz/Codes/Lesson/duckdb-wasm-web` 已安装 rc.4 tarball，并通过 `pnpm build` 和 `pnpm verify:opfs`。
-6. run id、commit、tarball、manifest size、OPFS 验收输出已记录。
+4. 继续创建 `keepdb-browser-v0.1.0-rc.5`，验证 KeepDB C API export filter。
+5. artifact 已下载到 `/tmp/keepdb-browser-run-26367485075/`。
+6. `/Users/benz/Codes/Lesson/duckdb-wasm-web` 已安装 rc.5 tarball，并通过 `pnpm build` 和 `pnpm verify:opfs`。
+7. run id、commit、tarball、manifest size、OPFS 验收输出已记录。
 
 下一阶段顺序：
 
-1. 固化当前 rc.4 交付记录，不再改 OPFS 功能路径。
+1. 固化当前 rc.5 交付记录，不再改 OPFS 功能路径。
 2. 以 `@keepdb/duckdb-wasm-browser` 为唯一消费包入口继续验证。
-3. 继续排查 wasm 体积仍偏大的问题，重点看 `duckdb_web` 自身的 Arrow/JSON/CSV/insert API 链接面。
+3. 继续排查 wasm 体积仍偏大的问题，重点看 Arrow result path、DuckDB core 静态库和 Parquet loadable extension 依赖。
 4. 体积优化每次改动后仍必须回到 `/Users/benz/Codes/Lesson/duckdb-wasm-web` 跑同一套 `pnpm verify:opfs`。
 
 成功指标以消费项目输出为准：
@@ -62,19 +63,19 @@ cd /Users/benz/Codes/Lesson/duckdb-wasm-web
 pnpm verify:opfs
 ```
 
-最新 `@keepdb/duckdb-wasm-browser` rc.4 通过结果：
+最新 `@keepdb/duckdb-wasm-browser` rc.5 通过结果：
 
 ```text
-package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26365410999/keepdb-duckdb-wasm-browser-0.1.0.tgz
-runId=26365410999
-duckdbWasmCommit=24f8d532c6d68b131afe4757f8dcccf3516de4f1
-startedAt=2026-05-24T16:32:50.632Z
-completedAt=2026-05-24T16:33:02.341Z
+package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
+runId=26367485075
+duckdbWasmCommit=15d5c2ecdf99d22b856cf06363a64d29f56e0820
+startedAt=2026-05-24T17:37:53.138Z
+completedAt=2026-05-24T17:38:05.264Z
 OPFS_DB_REOPEN_OK OK marker=1,ok, test.db size=536576
 REOPEN_WRITE_OK OK rows=2, test.db size=798720
 SQL_PANEL_OK OK rows=2, latestId=2, test.db size=1060864
 REMOTE_IMPORT_OK OK orders=40, items=80, inventory=8, test.db size=1585152
-PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26365410999
+PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26367485075
 ```
 
 P1 发布版 manifest 已在消费项目中扩展并纳入自动验收。manifest 现在包含 `schemaVersion`、`accessMode`、`duckdbWasmPackage`、`duckdbWasmCommit`、`artifactRunId`、`tables`、`checkpointAt`、`publishedAt`，读侧会校验 manifest size 与 OPFS 物理文件大小一致。
@@ -142,31 +143,31 @@ packages/duckdb-wasm/src/targets/duckdb-browser-keepdb.worker.ts
 
 `KEEPDB_BROWSER_ONLY=1` browser-only 打包路径已落地在 `packages/duckdb-wasm/bundle.mjs`，源码构建路径不再要求 mvp/eh/coi/node/test 全量产物。`.github/workflows/keepdb-browser.yml` 在不传 `source_run_id` 时会使用该模式打包专用 browser dist。
 
-真实源码构建 run `26365410999` 已通过，触发 tag 为 `keepdb-browser-v0.1.0-rc.4`，提交为 `24f8d532c6d68b131afe4757f8dcccf3516de4f1`。artifact 中的 manifest 确认：
+真实源码构建 run `26367485075` 已通过，触发 tag 为 `keepdb-browser-v0.1.0-rc.5`，提交为 `15d5c2ecdf99d22b856cf06363a64d29f56e0820`。artifact 中的 manifest 确认：
 
 ```text
 target=keepdb-browser-eh
 wasm source=packages/duckdb-wasm/dist/duckdb-keepdb-browser.wasm
 worker source=packages/duckdb-wasm/dist/duckdb-browser-keepdb.worker.js
-wasm=32949431 bytes
-wasm gzip=7959048 bytes
-worker=548132 bytes
-worker gzip=129825 bytes
+wasm=32945449 bytes
+wasm gzip=7957674 bytes
+worker=544821 bytes
+worker gzip=129472 bytes
 ```
 
-结论：源码构建、browser-only dist、专用 npm 包和消费验收已打通；`MAIN_MODULE=2 + generated exported list` 能带来有限体积收益，但 gzip 下降不明显，精简目标未完成。下一步应继续查 `duckdb_web` 链接输入，而不是继续改 JS 包装层。
+结论：源码构建、browser-only dist、专用 npm 包和消费验收已打通；`MAIN_MODULE=2 + generated exported list` 能带来有限体积收益，C API export filter 安全但增量收益很小，精简目标未完成。下一步应继续查 DuckDB core / Arrow result path / Parquet loadable extension 依赖，而不是继续微调导出列表。
 
-消费项目已切换到 rc.4 tarball 并通过同一套 OPFS 验收：
+消费项目已切换到 rc.5 tarball 并通过同一套 OPFS 验收：
 
 ```text
-package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26365410999/keepdb-duckdb-wasm-browser-0.1.0.tgz
-runId=26365410999
-duckdbWasmCommit=24f8d532c6d68b131afe4757f8dcccf3516de4f1
+package=@keepdb/duckdb-wasm-browser file:/tmp/keepdb-browser-run-26367485075/keepdb-duckdb-wasm-browser-0.1.0.tgz
+runId=26367485075
+duckdbWasmCommit=15d5c2ecdf99d22b856cf06363a64d29f56e0820
 OPFS_DB_REOPEN_OK OK marker=1,ok, test.db size=536576
 REOPEN_WRITE_OK OK rows=2, test.db size=798720
 SQL_PANEL_OK OK rows=2, latestId=2, test.db size=1060864
 REMOTE_IMPORT_OK OK orders=40, items=80, inventory=8, test.db size=1585152
-PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26365410999
+PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26367485075
 ```
 
 本轮还修复了 `@keepdb/duckdb-wasm-browser` 包内 JS sourcemap 注释残留问题，避免 `worker.js` 在 Vite/开发服务器中引用不存在的 `duckdb-browser-keepdb.worker.js.map`。
@@ -174,8 +175,8 @@ PUBLISHED_READ_OK OK published=keepdb.publish.v1.db, rows=3, size=536576, run=26
 专用 tag 发布方式：
 
 ```bash
-git tag keepdb-browser-v0.1.0-rc.4
-git push origin keepdb-browser-v0.1.0-rc.4
+git tag keepdb-browser-v0.1.0-rc.5
+git push origin keepdb-browser-v0.1.0-rc.5
 ```
 
 或者手动触发 `.github/workflows/keepdb-browser.yml`。传入 `source_run_id=26322240868` 时，workflow 会下载 `wasm-*-loadable` artifacts 并打包 fallback 包；不传 `source_run_id` 时，workflow 会从源码构建 `duckdb-keepdb-browser.wasm`，使用 `extension_config_keepdb_browser.cmake` 只保留当前验证必需的 Parquet 扩展入口。
